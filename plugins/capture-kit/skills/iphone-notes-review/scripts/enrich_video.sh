@@ -32,6 +32,45 @@ MODEL="${WHISPER_MODEL:-mlx-community/whisper-large-v3-turbo}"
 SCRATCH="${SCRATCH_DIR:-/tmp/notes-enrich}"
 mkdir -p "$SCRATCH"
 
+# --- Threads 게시물: curl + OG bot UA로 추출 (yt-dlp Threads 미지원) ---
+# Threads는 일반 브라우저 UA엔 SPA를 내리고, facebookexternalhit UA엔 OG 태그 포함 HTML을 돌려준다.
+if [[ "$URL" =~ (threads\.net|threads\.com) ]]; then
+  PAGE=$(curl -sL \
+    -A "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)" \
+    --max-time 15 "$URL" 2>/dev/null || true)
+  if [[ -z "$PAGE" ]]; then
+    echo "EXTRACT_FAILED: $URL"
+    exit 0
+  fi
+  # og:title / og:description 추출 + HTML 엔티티 디코딩
+  HTML_TMP="$SCRATCH/threads_page.html"
+  printf '%s' "$PAGE" > "$HTML_TMP"
+  OG_TITLE=$(python3 -c "
+import re
+from html import unescape
+html = open('$HTML_TMP').read()
+m = re.search(r'property=\"og:title\"[^>]+content=\"([^\"]*)\"', html) or \
+    re.search(r'content=\"([^\"]*)\"[^>]+property=\"og:title\"', html)
+print(unescape(m.group(1)) if m else '')
+" 2>/dev/null || true)
+  OG_DESC=$(python3 -c "
+import re
+from html import unescape
+html = open('$HTML_TMP').read()
+m = re.search(r'property=\"og:description\"[^>]+content=\"([^\"]*)\"', html) or \
+    re.search(r'content=\"([^\"]*)\"[^>]+property=\"og:description\"', html)
+print(unescape(m.group(1)) if m else '')
+" 2>/dev/null || true)
+  rm -f "$HTML_TMP"
+  if [[ -z "$OG_DESC" ]]; then
+    echo "EXTRACT_FAILED: $URL"
+    exit 0
+  fi
+  printf 'UPLOADER: %s\n' "$OG_TITLE"
+  printf 'CAPTION: %s\n' "$OG_DESC"
+  exit 0
+fi
+
 # --- 1. 캡션·메타 (다운로드 없이) ---
 if ! META=$(yt-dlp --skip-download --no-warnings \
       --print "%(uploader)s" --print "%(title)s" --print "%(description)s" "$URL" 2>/dev/null); then

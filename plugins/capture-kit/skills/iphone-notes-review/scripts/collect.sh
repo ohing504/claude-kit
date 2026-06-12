@@ -41,8 +41,8 @@ done
 echo "처리 폴더: $*"
 echo "추출 메모 수: $(grep -c '@@@NOTE@@@' "$WORK/raw.txt" 2>/dev/null || echo 0)"
 
-# 2. 영상 URL 유니크 추출
-grep -oiE 'https?://[A-Za-z0-9./?=_&%~-]*(instagram\.com/(reel|p)|youtu\.be|youtube\.com/watch|tiktok\.com)[A-Za-z0-9./?=_&%~-]*' \
+# 2. 소셜 미디어 URL 유니크 추출 (인스타·유튜브·틱톡·Threads)
+grep -oiE 'https?://[A-Za-z0-9./?=_&%~-]*(instagram\.com/(reel|p)|youtu\.be|youtube\.com/watch|tiktok\.com|threads\.net|threads\.com)[A-Za-z0-9./?=_&%~-]*' \
   "$WORK/raw.txt" 2>/dev/null | sort -u > "$WORK/video_urls.txt"
 VCOUNT=$(grep -c . "$WORK/video_urls.txt" 2>/dev/null) || VCOUNT=0
 echo "영상 URL 수: $VCOUNT"
