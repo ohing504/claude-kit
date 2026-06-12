@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-kit",
+  "description": "일상에서 재사용하는 Claude Code 스킬·워크플로우 모음.",
+  "owner": {
+    "name": "ohing"
+  },
+  "plugins": [
+    {
+      "name": "capture-kit",
+      "description": "흩어진 캡처(아이폰 메모·보이스메모·스크린샷 등)를 추출→검토→자산화/폐기로 흘려보내는 캡처 처리 도메인",
+      "version": "0.1.0",
+      "author": {
+        "name": "ohing"
+      },
+      "source": "./plugins/capture-kit",
+      "category": "productivity"
+    }
+  ]
+}
