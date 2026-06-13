@@ -83,7 +83,13 @@ fi
 # --- 1. 캡션·메타 (다운로드 없이) ---
 if ! META=$("$CK_YTDLP" --skip-download --no-warnings \
       --print "%(uploader)s" --print "%(title)s" --print "%(description)s" "$URL" 2>/dev/null); then
-  echo "EXTRACT_FAILED: $URL"
+  # 인스타 /p/ 게시물은 이미지 캐러셀일 때 yt-dlp가 막힌다 — 슬라이드 텍스트가 본문이니
+  # extract_carousel.sh로 슬라이드를 받아 리뷰 LLM이 비전 판독하라는 신호를 남긴다.
+  if [[ "$URL" =~ instagram\.com/p/ ]]; then
+    echo "IMAGE_POST: 이미지 게시물로 보임 → extract_carousel.sh \"$URL\" 로 슬라이드 추출 후 비전 판독"
+  else
+    echo "EXTRACT_FAILED: $URL"
+  fi
   exit 0
 fi
 UPLOADER=$(printf '%s\n' "$META" | sed -n 1p)
