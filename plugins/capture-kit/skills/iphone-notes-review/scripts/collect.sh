@@ -32,6 +32,10 @@ WORK="${WORK_DIR:-/tmp/notes-review-work}"
 rm -rf "$WORK"; mkdir -p "$WORK/enrich"
 export SCRATCH_DIR="$WORK/scratch"
 
+# 0. 도구 환경 부트스트랩(멱등) — 스킬 전용 격리 venv. 사용자 파이썬을 건드리지 않는다.
+"$SCR/setup_env.sh" \
+  || echo "경고: 도구 환경 준비 미완 — 시스템 PATH 도구로 진행(추출/STT가 제한될 수 있음)" >&2
+
 # 1. 추출 (지정 폴더들만)
 : > "$WORK/raw.txt"
 for folder in "$@"; do
