@@ -7,6 +7,7 @@
 ```bash
 claude plugin marketplace add ohing504/claude-kit
 claude plugin install capture-kit@claude-kit
+claude plugin install visual-kit@claude-kit
 ```
 
 프로젝트별 활성화는 `.claude/settings.json`:
@@ -14,7 +15,8 @@ claude plugin install capture-kit@claude-kit
 ```json
 {
   "enabledPlugins": {
-    "capture-kit@claude-kit": true
+    "capture-kit@claude-kit": true,
+    "visual-kit@claude-kit": true
   }
 }
 ```
@@ -27,6 +29,12 @@ claude plugin install capture-kit@claude-kit
 
 - **iphone-notes-digest** — Apple Notes 메모를 추출하고, 안의 링크·영상(인스타 릴스 캡션, 음성으로만 설명하는 영상은 STT까지)을 해석해 메모별 다이제스트(사실) 문서로 정리한다. 살릴지/버릴지 판단(흡수·삭제)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템) 몫 — 스킬은 사실만 기록한다.
 
+### visual-kit
+
+대화 중 복잡해진 논의를 한 장의 시각 HTML로 정리.
+
+- **whiteboard** — 디버깅·설계·선택지 비교처럼 글로는 따라가기 힘든 논의를, 바로 그리지 않고 "지금 무엇이 막혔는지"를 대화에서 먼저 읽어 *무엇을 어느 수준으로* 그릴지 합의한 뒤, 차트·다이어그램·비교 매트릭스를 담은 자기완결 HTML 한 장으로 시각화한다. 핵심은 예쁜 렌더가 아니라 *무엇을 그릴지*를 정확히 집어내는 것 — 설명을 원하는데 결정을 들이밀거나, 코드 어휘로 그려 더 헷갈리게 만들지 않는다. 생성한 HTML은 headless 렌더 검증으로 다이어그램이 실제로 그려졌는지 확인한다.
+
 ## 필수 환경
 
 `iphone-notes-digest`는 **macOS 전용**이다 (Apple Notes 자동화에 의존). 처음 실행할 때 아래가 필요하다.
@@ -37,6 +45,8 @@ claude plugin install capture-kit@claude-kit
 - **Apple Notes 접근 권한** — 첫 실행 시 macOS가 "터미널이 메모를 제어하려 합니다" 자동화 권한을 묻는다. 허용해야 메모를 추출할 수 있다.
 
 > yt-dlp·whisper 등 나머지 Python 의존성은 첫 실행 때 `~/.cache/capture-kit` 격리 venv에 자동 설치된다 — 전역 환경을 건드리지 않는다.
+
+`visual-kit`(whiteboard)은 OS 독립적이다. 별도 의존성 없이 동작하며, 생성한 HTML의 **렌더 검증**(`verify_render.sh`)에만 **Chrome/Chromium**을 쓴다 — 없으면 검증을 건너뛰고 브라우저로 직접 확인하라고 안내한다.
 
 ## 사용 예시
 
