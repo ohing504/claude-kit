@@ -44,6 +44,9 @@ for folder in "$@"; do
 done
 echo "처리 폴더: $*"
 echo "추출 메모 수: $(grep -c '@@@NOTE@@@' "$WORK/raw.txt" 2>/dev/null || echo 0)"
+# 잠겨서 본문을 못 가져온 메모 — "전부 봤다" 착시를 막기 위해 명시 집계한다.
+LOCKED=$(grep -c '\[LOCKED\]' "$WORK/raw.txt" 2>/dev/null) || LOCKED=0
+echo "잠겨서 본문 추출 못 한 메모: $LOCKED"
 
 # 2. 소셜 미디어 URL 유니크 추출 (인스타·유튜브·틱톡·Threads)
 grep -oiE 'https?://[A-Za-z0-9./?=_&%~-]*(instagram\.com/(reel|p)|youtu\.be|youtube\.com/watch|tiktok\.com|threads\.net|threads\.com)[A-Za-z0-9./?=_&%~-]*' \

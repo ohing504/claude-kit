@@ -10,6 +10,7 @@
 # 출력: 메모마다 아래 블록 (구분자 @@@NOTE@@@)
 #   @@@NOTE@@@
 #   title: ...
+#   id: ...          # x-coredata 안정 식별자 — 소비자의 흡수 매칭·삭제 토큰·증분의 키
 #   created: ...
 #   folder: ...
 #   body:
@@ -40,9 +41,16 @@ tell application "Notes"
             set n to item i of theNotes
             set out to out & "@@@NOTE@@@" & linefeed
             set out to out & "title: " & (name of n) & linefeed
+            set out to out & "id: " & (id of n) & linefeed
             set out to out & "created: " & (creation date of n as string) & linefeed
             set out to out & "folder: " & fname & linefeed
-            set out to out & "body:" & linefeed & (body of n) & linefeed
+            -- 잠긴 메모는 본문이 깨지거나 빈값으로 나온다. 조용히 흘려보내면
+            -- "전부 봤다" 착시가 생기므로, 메모 블록은 만들되 본문을 명시적으로 마킹한다.
+            if password protected of n then
+                set out to out & "body:" & linefeed & "[LOCKED] 잠긴 메모 — 본문 추출 불가" & linefeed
+            else
+                set out to out & "body:" & linefeed & (body of n) & linefeed
+            end if
         end repeat
     end repeat
     return out
