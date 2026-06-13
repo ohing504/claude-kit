@@ -12,7 +12,7 @@
 # list_folders.sh로 폴더를 확인하고 사용자가 고른 폴더만 넘긴다.
 #
 # 환경:
-#   WORK_DIR   결과 출력 위치 (기본 /tmp/notes-review-work)
+#   WORK_DIR   결과 출력 위치 (기본 /tmp/notes-digest-work)
 #
 # 출력:
 #   $WORK_DIR/raw.txt        추출된 메모 원본(@@@NOTE@@@ 블록)
@@ -28,7 +28,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 SCR="$(cd "$(dirname "$0")" && pwd)"
-WORK="${WORK_DIR:-/tmp/notes-review-work}"
+WORK="${WORK_DIR:-/tmp/notes-digest-work}"
 rm -rf "$WORK"; mkdir -p "$WORK/enrich"
 export SCRATCH_DIR="$WORK/scratch"
 

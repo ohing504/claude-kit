@@ -13,7 +13,7 @@
 #   - 안 주면 영상 전체에서 전환마다 추출
 #
 # 환경:
-#   WORK_DIR                결과 위치 (기본 /tmp/notes-review-work)
+#   WORK_DIR                결과 위치 (기본 /tmp/notes-digest-work)
 #   FRAME_SCENE_THRESHOLD   장면 전환 민감도 0~1 (기본 0.3, 낮을수록 더 많이 뽑힘)
 #
 # 출력:
@@ -24,7 +24,7 @@ set -uo pipefail
 URL="${1:?사용: extract_frames.sh <URL> [시작초] [끝초]}"
 START="${2:-}"; END="${3:-}"
 THRESHOLD="${FRAME_SCENE_THRESHOLD:-0.3}"
-WORK="${WORK_DIR:-/tmp/notes-review-work}"
+WORK="${WORK_DIR:-/tmp/notes-digest-work}"
 FDIR="$WORK/frames"; mkdir -p "$FDIR"
 rm -f "$FDIR"/frame_*.jpg "$FDIR"/contact.jpg
 

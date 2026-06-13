@@ -11,7 +11,7 @@
 # 받은 slide_NN.jpg를 리뷰 LLM이 비전으로 읽어 본문을 뽑는다(스크립트는 OCR 안 함).
 #
 # 사용: extract_carousel.sh <인스타 게시물 URL>
-# 환경: WORK_DIR (기본 /tmp/notes-review-work)
+# 환경: WORK_DIR (기본 /tmp/notes-digest-work)
 # 출력: $WORK_DIR/carousel/slide_NN.jpg(+영상이면 .mp4) + contact.jpg
 #       표준출력에 CAPTION + 슬라이드별 경로 + SLIDE_COUNT
 
@@ -20,7 +20,7 @@ URL="${1:?사용: extract_carousel.sh <인스타 게시물 URL>}"
 SCR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_env.sh
 source "$SCR/_env.sh"
-WORK="${WORK_DIR:-/tmp/notes-review-work}"
+WORK="${WORK_DIR:-/tmp/notes-digest-work}"
 CDIR="$WORK/carousel"; mkdir -p "$CDIR"
 rm -f "$CDIR"/slide_*.jpg "$CDIR"/slide_*.mp4 "$CDIR"/contact.jpg
 
