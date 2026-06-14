@@ -1,13 +1,12 @@
 # claude-kit
 
-일상에서 재사용하는 Claude Code 스킬·워크플로우 모음.
+일상에서 재사용하는 Claude Code 스킬 모음.
 
 ## 설치
 
 ```bash
 claude plugin marketplace add ohing504/claude-kit
-claude plugin install capture-kit@claude-kit
-claude plugin install visual-kit@claude-kit
+claude plugin install claude-kit@claude-kit
 ```
 
 프로젝트별 활성화는 `.claude/settings.json`:
@@ -15,29 +14,26 @@ claude plugin install visual-kit@claude-kit
 ```json
 {
   "enabledPlugins": {
-    "capture-kit@claude-kit": true,
-    "visual-kit@claude-kit": true
+    "claude-kit@claude-kit": true
   }
 }
 ```
 
-## 플러그인
+## 스킬
 
-### capture-kit
+두 스킬 모두 Claude Code 세션에서 자연어로 호출한다.
 
-흩어진 캡처(아이폰 메모 등)를 추출 → 해석 → 보고로 정리.
+### iphone-notes-digest (macOS 전용)
 
-- **iphone-notes-digest** — Apple Notes 메모를 추출하고, 안의 링크·영상(인스타 릴스 캡션, 음성으로만 설명하는 영상은 STT까지)을 해석해 메모별 다이제스트(사실) 문서로 정리한다. 살릴지/버릴지 판단(흡수·삭제)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템) 몫 — 스킬은 사실만 기록한다.
+Apple Notes 메모를 추출하고, 안의 링크·영상(인스타 릴스 캡션, 음성으로만 설명하는 영상은 STT까지)을 해석해 메모별 다이제스트(사실) 문서로 정리한다. 살릴지/버릴지 판단(흡수·삭제)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템) 몫 — 스킬은 사실만 기록한다.
 
-### visual-kit
+### whiteboard
 
-대화 중 복잡해진 논의를 한 장의 시각 HTML로 정리.
-
-- **whiteboard** — 디버깅·설계·선택지 비교처럼 글로는 따라가기 힘든 논의를, 바로 그리지 않고 "지금 무엇이 막혔는지"를 대화에서 먼저 읽어 *무엇을 어느 수준으로* 그릴지 합의한 뒤, 차트·다이어그램·비교 매트릭스를 담은 자기완결 HTML 한 장으로 시각화한다. 핵심은 예쁜 렌더가 아니라 *무엇을 그릴지*를 정확히 집어내는 것 — 설명을 원하는데 결정을 들이밀거나, 코드 어휘로 그려 더 헷갈리게 만들지 않는다. 생성한 HTML은 headless 렌더 검증으로 다이어그램이 실제로 그려졌는지 확인한다.
+디버깅·설계·선택지 비교처럼 글로는 따라가기 힘든 논의를, 바로 그리지 않고 "지금 무엇이 막혔는지"를 대화에서 먼저 읽어 *무엇을 어느 수준으로* 그릴지 합의한 뒤, 차트·다이어그램·비교 매트릭스를 담은 자기완결 HTML 한 장으로 시각화한다. 핵심은 예쁜 렌더가 아니라 *무엇을 그릴지*를 정확히 집어내는 것. 생성한 HTML은 headless 렌더 검증으로 다이어그램이 실제로 그려졌는지 확인한다.
 
 ## 필수 환경
 
-`iphone-notes-digest`는 **macOS 전용**이다 (Apple Notes 자동화에 의존). 처음 실행할 때 아래가 필요하다.
+`iphone-notes-digest`만 **macOS 전용**이다 (Apple Notes 자동화에 의존). `whiteboard`는 OS 독립적이다.
 
 - **macOS** — Apple Notes(메모) 앱과 AppleScript 자동화. Apple Silicon이면 영상 STT가 Metal 가속(mlx-whisper)으로 더 빠르다.
 - **[uv](https://docs.astral.sh/uv/)** — Python 도구를 격리 venv로 부트스트랩한다. `brew install uv`
@@ -46,24 +42,17 @@ claude plugin install visual-kit@claude-kit
 
 > yt-dlp·whisper 등 나머지 Python 의존성은 첫 실행 때 `~/.cache/capture-kit` 격리 venv에 자동 설치된다 — 전역 환경을 건드리지 않는다.
 
-`visual-kit`(whiteboard)은 OS 독립적이다. 별도 의존성 없이 동작하며, 생성한 HTML의 **렌더 검증**(`verify_render.sh`)에만 **Chrome/Chromium**을 쓴다 — 없으면 검증을 건너뛰고 브라우저로 직접 확인하라고 안내한다.
+`whiteboard`는 생성한 HTML의 **렌더 검증**(`verify_render.sh`)에만 **Chrome/Chromium**을 쓴다 — 없으면 검증을 건너뛰고 브라우저로 직접 확인하라고 안내한다.
 
 ## 사용 예시
-
-Claude Code 세션에서 자연어로 호출한다.
 
 ```
 메모앱에 쌓인 메모 정리해줘
   → 폴더 선택 → 수집 → 링크·영상 해석 → 메모별 다이제스트 문서 생성
 
-아이폰 메모에 인스타 릴스/링크 잔뜩 있는데 뭐였는지 모르겠어
-  → 각 콘텐츠의 캡션·STT를 해석해 "이게 뭐였는지"를 사실로 정리
-
-(다이제스트 확인 후) 처리한 메모 지워줘
-  → 넘긴 메모만 dispose_notes.sh로 삭제(가드 + DRY RUN 내장)
+이 선택지들 한눈에 비교하게 그려줘
+  → 무엇을 그릴지 합의 → 비교 매트릭스 HTML 한 장 생성
 ```
-
-결과물은 메모별 섹션으로 정리된 다이제스트(사실) 문서 한 장이다. **무엇을 살리고 버릴지는 이 문서를 본 사용자(또는 사용자의 PKM)가 정한다** — 스킬은 판단하지 않는다.
 
 ## 트러블슈팅
 
