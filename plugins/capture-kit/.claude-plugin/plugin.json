@@ -1,9 +1,0 @@
-{
-  "name": "capture-kit",
-  "version": "0.1.0",
-  "description": "흩어진 캡처(아이폰 메모·보이스메모·스크린샷 등)를 추출→검토→자산화/폐기로 흘려보내는 캡처 처리 도메인",
-  "author": {
-    "name": "ohing"
-  },
-  "skills": ["./skills"]
-}
