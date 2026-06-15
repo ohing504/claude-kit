@@ -55,21 +55,18 @@ tools: Read, Grep, Glob, Bash, Edit, Write
    - **인덱스 갱신**: 삭제·이동·머지 결과를 `MEMORY.md`에 반영. 한 줄/항목 유지.
    - **확인 보고**: 처리 내역(통합/삭제/이동/인덱스) 요약.
 
-4. 위치·구조 변경 전 사용자 확인 (overwrite 금지, 삭제는 명시 결정 시만).
-
 ## Skip 조건
 
 - 메모리 *콘텐츠 자체* 작성·수정 → 네이티브 메모리가 직접 저장.
 - 세션 인계용 *현재 진행 상황*(in-flight 추론·블로커) → handoff 영역.
 - 프로젝트 *문서*(spec·PRD·ADR 등) 위치·구조 → docs-manager 영역.
 - 외부 참고 자료(레포·research·insights) 배치 → references-manager 영역.
-- `references/memory-routing.md` SSOT 갱신은 룰 변경 결정 시만 — 직접 편집은 트리거 누락 위험.
+
 
 ## Edge Cases
 
 - **메모리 경로 인코딩**: cwd → projects 디렉토리명은 `/`·`.`를 `-`로 치환(`.`도 치환 → `~/.claude`류는 `--` 생김, 예: `/Users/<you>/.claude` → `-Users-<you>--claude`). 도출 `pwd | sed 's#[/.]#-#g'`. 불확실 시 `ls -d ~/.claude/projects/*<프로젝트명>*`로 검증.
 - **전역 스윕 컨텍스트 보호**: 규모 클 수 있음 → 반드시 sub-agent 위임, 요약·우선순위만 반환.
-- **CLAUDE.md 비용 트레이드오프**: tier 1 전부 통합하면 *모든 세션* 비용 증가. 반복 빈도 높은 진짜 보편만; 일회성·맥락 의존은 프로젝트에 두거나 저장 안 함.
 - **같은 취지 다른 표현**: 파일명만으로 중복 단정 금지(`commit_cadence` vs `no_auto_commit` 등). 인덱스 취지 대조로 *같은 행동 규칙*인지 확인 후 처리.
 - **삭제 vs 보존 모호**: 미묘한 프로젝트별 뉘앙스(레포별 브랜치 전략 차이 등) 있으면 일괄 삭제 금지 — 보고 후 보존 여부 결정 받기.
 - **외부 관리 마커**: `~/.claude/CLAUDE.md`에 외부 도구 자동 동기 구간(START/END 마커 류)이 있으면 그 안 편집 금지. 통합은 마커 밖 영역에만.

@@ -5,7 +5,6 @@
 ## 1. 메모리 작동 모델 (전제)
 
 - 메모리 경로: `~/.claude/projects/<cwd-encoded>/memory/` — 프로젝트(cwd)별 격리.
-- 인코딩: cwd의 `/`·`.`를 `-`로 치환. `.`도 치환되므로 `~/.claude` 류 경로는 `--`가 생긴다(예: `/Users/<you>/.claude` → `-Users-<you>--claude`). 도출 `pwd | sed 's#[/.]#-#g'`.
 - 매 세션 자동 로드: 그 프로젝트의 `MEMORY.md` 인덱스 *한 개만*. 개별 메모리 파일은 자동 로드 아님 — 관련 시 recall로 `<system-reminder>`에 surface.
 - 전역 항상-로드 레이어: `~/.claude/CLAUDE.md` (모든 프로젝트 모든 세션 로드, 수기 관리).
 - 저장 주체: 메모리는 Claude가 세션 중 *자율적으로* 저장한다(사용자 동의·지시 없이). 저장 시점에 보편/고유를 가르는 장치는 없다.
