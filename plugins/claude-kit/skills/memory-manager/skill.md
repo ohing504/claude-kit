@@ -1,6 +1,6 @@
 ---
 name: memory-manager
-description: Claude 파일 기반 메모리(`~/.claude/projects/<cwd>/memory/`)의 cross-silo 중복·오배치·인덱스 bloat를 audit하고 사용자 확인 후 정리(revise)하는 스킬. "메모리 정리", "memory audit", "메모리 통합", "memory cleanup", "메모리가 컨텍스트 먹는다", "프로젝트마다 메모리 분산" 같은 요청 시 사용. 메모리 콘텐츠 자체 작성·저장은 본 스킬 영역 아님 — 네이티브 메모리가 직접 저장.
+description: ~/.claude 파일 기반 메모리의 cross-silo 중복·오배치·인덱스 bloat를 audit하고 사용자 확인 후 정리(revise)한다.
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
