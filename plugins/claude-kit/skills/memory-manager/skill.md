@@ -14,7 +14,12 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 ## 적용하는 규칙
 
 - **사용자 호출형** — 자동 hook·always-on trigger 없이 명시 호출 시에만 발동.
-- **3-tier 분류 (내부 기준)** — 오배치 판정·통합 목적지 잣대. SSOT [`references/memory-routing.md`](./references/memory-routing.md).
+- **3-tier 분류 (내부 기준)** — 오배치 판정·통합 목적지 잣대. 사용자에게 *어디 저장할지 묻는 서비스가 아니다*.
+  1. **전역** `~/.claude/CLAUDE.md` — 모든 프로젝트 공통 feedback. 매 세션 로드 → *진짜 보편*만.
+  2. **프로젝트** `~/.claude/projects/<cwd>/memory/` — 그 레포 한정 fact/decision.
+  3. **저장 안 함** — 코드·git·`CLAUDE.md`가 이미 담은 것, 일회성.
+- **판정 잣대** — *보편성*. "다른 프로젝트에서도 똑같이 필요한가?" 예→tier 1, 레포 고유→tier 2, 재도출 가능→tier 3.
+- **전역 통합 절제** — 전역은 *모든 세션* 비용 → 반복 빈도 높은 보편만.
 - **인덱스 lean** — `MEMORY.md`는 한 줄/항목, 콘텐츠 본문 금지. 비대해지면 머지·삭제.
 - **위치와 콘텐츠 분리** — 위치·구조만 다룬다. 본문 작성·수정은 네이티브 메모리 영역.
 - **변경 안전** — 위치 변경·삭제·통합 전 *대상 목록* 보고 + 확인. overwrite 금지, 삭제는 명시 결정 시만.
@@ -31,7 +36,14 @@ tools: Read, Grep, Glob, Bash, Edit, Write
    - **현재 프로젝트**: `~/.claude/projects/<cwd 인코딩>/memory/` 한 silo.
    - **전역 스윕**: `~/.claude/projects/*/memory/` 모든 silo (cross-silo 중복 탐지 필수).
 
-   점검 항목: cross-silo 중복·오배치·인덱스 bloat·재저장 중복·stale·인덱스 일치·repo 역참조 누수. 상세 → [`references/memory-routing.md §4`](./references/memory-routing.md).
+   점검 항목:
+   - **cross-silo 중복**: 같은 취지 feedback의 silo 간 분산(파일명 키워드 + 인덱스 취지 대조).
+   - **오배치**: tier 1 보편 규칙이 프로젝트 silo에 갇힘. `~/.claude/CLAUDE.md` 기존 규칙과 중복 포함.
+   - **인덱스 bloat**: `MEMORY.md` ~25줄 또는 3KB 초과, 또는 줄당 100자 초과(본문 혼입 신호).
+   - **재저장 중복**: 코드·git·`CLAUDE.md`가 이미 담은 내용.
+   - **stale**: 언급 파일·식별자·플래그의 현존 점검.
+   - **인덱스 일치**: `MEMORY.md` 항목 ↔ 실제 파일(고아 인덱스·미인덱스 파일).
+   - **repo 역참조 누수**: repo 문서가 `~/.claude/.../memory/`를 링크. `grep` 탐지, 보고만(repo 수정은 lane 밖).
 
    sub-agent가 우선순위 순 보고 반환 → main이 사용자에게 전달 + 처리 옵션 제안 — (a) 보편 규칙 `CLAUDE.md` 통합 + 중복 silo 삭제, (b) 오배치 재배치, (c) bloat 머지, (d) 재저장/stale 삭제, (e) repo 역참조 누수 → docs-manager/사용자 라우팅. 사용자 결정 후 revise 진행.
 
