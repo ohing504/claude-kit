@@ -1,0 +1,26 @@
+{
+  "skill_name": "memory-manager",
+  "evals": [
+    {
+      "id": 1,
+      "name": "audit-global-sweep-cross-silo-dup",
+      "prompt": "요즘 프로젝트마다 메모리에 다 적어서 중복되고 분산되는 것 같아. 전체 메모리 한번 훑어서 정리 방향 알려줘.",
+      "expected_output": "전역 스윕 audit을 sub-agent에 위임(main 컨텍스트 보호). 3-tier 기준으로 cross-silo 중복(같은 취지 feedback이 여러 silo에)·오배치(보편 규칙이 프로젝트 silo에 갇힘)·인덱스 bloat 탐지 후 우선순위 보고. 처리 옵션(CLAUDE.md 통합 + 중복 silo 삭제 등)을 제안하되 사용자 확인 전 삭제하지 않음.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "audit-current-project-bloat",
+      "prompt": "이 프로젝트 메모리 인덱스가 너무 길어진 것 같은데 점검해줘.",
+      "expected_output": "현재 프로젝트 silo 한 개 범위로 audit. MEMORY.md 인덱스 bloat(줄 수·바이트·줄당 평균 길이) 점검 + 인덱스에 콘텐츠 본문이 혼입된 lean 위반·재저장 중복·stale·인덱스 불일치 식별. 머지·본문 분리·삭제 후보를 우선순위로 보고, 처리는 사용자 확인 후.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "revise-consolidate-and-dedup",
+      "prompt": "방금 audit에서 나온 커밋 관련 보편 규칙들, 전역으로 합치고 중복된 프로젝트 메모리는 정리해줘.",
+      "expected_output": "revise 진입. 삭제·통합 대상 파일 경로·취지를 목록으로 먼저 보고하고 사용자 확인 gate 통과 후 진행. 보편 규칙을 ~/.claude/CLAUDE.md 해당 섹션에 간결히 1회 통합, 같은 취지 per-project 중복 파일 삭제 + 해당 MEMORY.md 인덱스 라인 제거, 양쪽 인덱스 갱신. overwrite 금지, 명시 결정 없는 일괄 삭제 금지, 외부 도구 관리 마커 구간 편집 금지. 처리 내역 요약 보고.",
+      "files": []
+    }
+  ]
+}
