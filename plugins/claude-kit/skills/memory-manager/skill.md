@@ -45,7 +45,14 @@ tools: Read, Grep, Glob, Bash, Edit, Write
    - **인덱스 일치**: `MEMORY.md` 항목 ↔ 실제 파일(고아 인덱스·미인덱스 파일).
    - **repo 역참조 누수**: repo 문서가 `~/.claude/.../memory/`를 링크. `grep` 탐지, 보고만(repo 수정은 lane 밖).
 
-   sub-agent가 우선순위 순 보고 반환 → main이 사용자에게 전달 + 처리 옵션 제안 — (a) 보편 규칙 `CLAUDE.md` 통합 + 중복 silo 삭제, (b) 오배치 재배치, (c) bloat 머지, (d) 재저장/stale 삭제, (e) repo 역참조 누수 → docs-manager/사용자 라우팅. 사용자 결정 후 revise 진행.
+   sub-agent 보고 반환 → main이 사용자에게 전달 + 처리 옵션 제안:
+   - (a) 보편 규칙 → `CLAUDE.md` 통합 + 중복 silo 삭제
+   - (b) 오배치 → 재배치
+   - (c) bloat → 머지
+   - (d) 재저장/stale → 삭제
+   - (e) repo 역참조 누수 → docs-manager/사용자 라우팅
+
+   사용자 결정 후 revise 진행.
 
 3. **revise (사용자 확인 후)**:
    - **목록 확인**: 대상 파일 경로·취지를 *목록으로* 보고 + 확인. 삭제는 명시 결정 시만(overwrite·일괄 삭제 자동 금지).
