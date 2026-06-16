@@ -11,3 +11,6 @@ notes-digest-*.md
 
 # 내부 기획·리서치는 공개 레포에 올리지 않는다 (로컬 보관)
 /docs/
+
+# ephemeral plan·작업 산출물 (로컬 보관)
+/.agentfiles/

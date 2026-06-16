@@ -1,9 +1,19 @@
 {
-  "instagram-carousel": { "width": 1080, "height": 1350, "scale": 1 },
-  "instagram-square":   { "width": 1080, "height": 1080, "scale": 1 },
-  "instagram-story":    { "width": 1080, "height": 1920, "scale": 1 },
-  "reels-9x16":         { "width": 1080, "height": 1920, "scale": 1 },
-  "og-card":            { "width": 1200, "height": 630,  "scale": 1 },
-  "appstore-iphone-6_7": { "width": 1284, "height": 2778, "scale": 1 },
-  "appstore-ipad-12_9":  { "width": 2048, "height": 2732, "scale": 1 }
+  "instagram-carousel":     { "width": 1080, "height": 1350, "scale": 1 },
+  "instagram-portrait-3x4": { "width": 1080, "height": 1440, "scale": 1 },
+  "instagram-square":       { "width": 1080, "height": 1080, "scale": 1 },
+  "instagram-story":        { "width": 1080, "height": 1920, "scale": 1 },
+  "reels-9x16":             { "width": 1080, "height": 1920, "scale": 1 },
+  "tiktok-9x16":            { "width": 1080, "height": 1920, "scale": 1 },
+  "og-card":                { "width": 1200, "height": 630,  "scale": 1 },
+  "twitter-card":           { "width": 1200, "height": 600,  "scale": 1 },
+  "linkedin-link":          { "width": 1200, "height": 627,  "scale": 1 },
+  "kakao-link":             { "width": 800,  "height": 400,  "scale": 1 },
+  "youtube-thumbnail":      { "width": 1280, "height": 720,  "scale": 1 },
+  "pinterest-pin":          { "width": 1000, "height": 1500, "scale": 1 },
+  "appstore-iphone-6_9":    { "width": 1320, "height": 2868, "scale": 1 },
+  "appstore-iphone-6_5":    { "width": 1284, "height": 2778, "scale": 1 },
+  "appstore-ipad-13":       { "width": 2064, "height": 2752, "scale": 1 },
+  "appstore-ipad-12_9":     { "width": 2048, "height": 2732, "scale": 1 },
+  "playstore-phone":        { "width": 1080, "height": 1920, "scale": 1 }
 }
