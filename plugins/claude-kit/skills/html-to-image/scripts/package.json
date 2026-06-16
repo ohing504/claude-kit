@@ -1,0 +1,11 @@
+{
+  "name": "html-to-image",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "HTML(파일·URL·문자열)을 지정 비율로 캡처 → PNG/JPEG",
+  "bin": { "html-to-image": "./capture.mjs" },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
