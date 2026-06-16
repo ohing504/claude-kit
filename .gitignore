@@ -1,6 +1,9 @@
 .DS_Store
 *.log
 
+# node 의존성 — 스킬 스크립트가 로컬 설치(npm install), 커밋하지 않는다. package-lock.json은 커밋
+node_modules/
+
 # 데이터는 절대 커밋하지 않는다 — 이 레포는 로직만 (README 경계 원칙)
 /data/
 /.scratch/
@@ -8,3 +11,6 @@ notes-digest-*.md
 
 # 내부 기획·리서치는 공개 레포에 올리지 않는다 (로컬 보관)
 /docs/
+
+# ephemeral plan·작업 산출물 (로컬 보관)
+/.agentfiles/
