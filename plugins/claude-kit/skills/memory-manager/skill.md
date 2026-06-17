@@ -1,6 +1,7 @@
 ---
 name: memory-manager
 description: ~/.claude 파일 기반 메모리의 cross-silo 중복·오배치·인덱스 bloat를 audit하고 사용자 확인 후 정리(revise)한다.
+argument-hint: [audit|revise]
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -28,7 +29,7 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 
 호출 시:
 
-1. **요청 유형 분류** — 사용자 요청이 다음 중 어느 유형인지 확인:
+1. **요청 유형 분류** — `$ARGUMENTS`가 정확히 `audit` 또는 `revise`면 그대로 사용. 그 외(없거나 자연어 문장)이면 사용자 요청에서 다음 중 어느 유형인지 확인:
    - **audit**: 메모리 구조·중복·배치 점검 (현재 프로젝트 / 전역 스윕)
    - **revise**: audit 결과를 바탕으로 통합·삭제·재배치 실행
 
@@ -54,7 +55,7 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 
    사용자 결정 후 revise 진행.
 
-3. **revise (사용자 확인 후)**:
+3. **revise (사용자 확인 후)**: 재배치·통합 시 네이티브 메모리 형식은 [`references/memory-routing.md`](references/memory-routing.md) 참조.
    - **목록 확인**: 대상 파일 경로·취지를 *목록으로* 보고 + 확인. 삭제는 명시 결정 시만(overwrite·일괄 삭제 자동 금지).
    - **전역 통합**: 보편 규칙 → `~/.claude/CLAUDE.md` 1회 통합(Edit). 기존 섹션을 런타임에 읽어 실제 헤딩으로 매칭(섹션명 가정 금지). 적합 섹션 없으면 위치 확인.
    - **중복 silo 삭제**: 통합 후 같은 취지 per-project 중복 파일 삭제 + `MEMORY.md` 인덱스 라인 제거.

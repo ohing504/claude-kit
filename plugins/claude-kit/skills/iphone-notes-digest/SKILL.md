@@ -1,6 +1,7 @@
 ---
 name: iphone-notes-digest
 description: 맥/아이폰 메모앱(Apple Notes)에 쌓인 메모를 추출하고, 메모 안의 링크·미디어를 실제로 열어 해석한 뒤(웹페이지 메타·유튜브/인스타/Threads 캡션, 음성으로만 설명하는 영상은 자막·STT까지), 메모별 섹션으로 정리한 한 장의 다이제스트(사실) 문서로 보고한다. "메모 정리하자", "메모앱 비우고 싶어", "아이폰 메모 추출해서 정리", "쌓인 메모 훑어줘", "Notes 정리", "메모에 인스타 릴스/링크 잔뜩 있는데 뭐였는지 모르겠어" 같은 요청에 사용한다. 메모를 단순히 옮겨적는 게 아니라, 링크 뒤의 내용까지 확인해 "이게 뭐였는지"를 다시 안 열어봐도 아는 사실로 만드는 것이 목적이다 — 살릴지/버릴지 판단(흡수·삭제·자산화)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템)가 정한다. 메모에 URL·유튜브·인스타 릴스·Threads 링크가 섞여 있을 때 특히 가치가 크다.
+argument-hint: [folder-name]
 tools: Bash, WebFetch, Read, Write, Edit
 ---
 
@@ -18,23 +19,20 @@ tools: Bash, WebFetch, Read, Write, Edit
 
 이 스킬 본문은 **로직(어떻게 추출·해석·정리하는가)만** 담는다. 추출된 실제 메모 내용·링크 해석 결과는 사용자가 지정한 출력 경로(없으면 현재 작업 디렉토리)에만 쓰고, 이 스킬이 설치된 레포에는 절대 쓰지 않는다. 임시 수집물·오디오는 `WORK_DIR`(기본 `/tmp/notes-digest-work`, gitignore 대상)에만 두고 작업 후 지운다.
 
-## 필요 도구 — 스킬 전용 격리 환경(첫 실행 1회 부트스트랩)
+## 필요 도구
 
-**사용자의 시스템/homebrew 파이썬을 건드리지 않는다.** 영상 도구를 시스템에 pip 설치하면 PEP 668 충돌·PATH 그림자·버전 오염이 난다. 대신 `collect.sh`가 첫 실행 시 `scripts/setup_env.sh`를 돌려 **스킬 전용 격리 venv**(`~/.cache/capture-kit/venv`, `CAPTURE_KIT_HOME`로 변경 가능)를 한 번 만들고 캐시한다. 이후엔 즉시 스킵. 모든 스크립트는 PATH가 아니라 이 venv의 도구를 우선 쓴다(`_env.sh`가 해석, 없으면 시스템 PATH로 폴백).
+직접 설치해야 하는 것은 두 가지뿐. 나머지는 `uvx`가 실행 시 자동으로 가져온다.
 
-- **uv** — 격리 venv·파이썬을 통째로 관리하는 단일 바이너리. *유일하게 사용자가 직접 깔아야 하는 것.* 없으면 setup_env.sh가 설치 명령을 안내하고 멈춘다. (`brew install uv` 또는 `curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- **ffmpeg** — yt-dlp 오디오 추출·프레임 추출에 필요한 시스템 바이너리(pip 패키지가 아니라 venv에 담지 못함). 없으면 안내. (`brew install ffmpeg`)
-- venv 안에 **자동 설치**(격리라 사용자 환경 오염 없음):
-  - **yt-dlp** — 영상(인스타 릴스·유튜브·틱톡·Threads) 캡션·메타·오디오 추출.
-  - **STT 엔진** (영상 음성 → 텍스트, *캡션 얕은 영상에만*): Apple Silicon이면 **mlx-whisper**(Metal 네이티브, 릴스당 ~6초), 그 외 플랫폼은 **faster-whisper**. 모델 `whisper-large-v3-turbo` — 작고 빠른데 한국어 정확도 충분(고유명사·전문용어까지).
+- **uv** — `uvx`로 yt-dlp·STT 엔진을 격리 실행. (`brew install uv` 또는 `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- **ffmpeg** — 오디오·프레임 추출용 시스템 바이너리. (`brew install ffmpeg`)
 
-수동 점검·강제 재설치: `scripts/setup_env.sh` 직접 실행(멱등, `CK_FORCE_SETUP=1`이면 강제 재설치). uv·ffmpeg 같은 시스템 의존은 임의 설치하지 않고 정확한 명령을 안내한다 — venv 안 pip 패키지만 자동 설치한다. STT는 무거우니 캡션으로 충분한 영상엔 쓰지 않는다(`collect.sh`가 캡션 길이로 자동 판단).
+`collect.sh` 첫 실행 시 두 도구의 존재를 확인하고 없으면 안내한다. yt-dlp·STT 엔진은 별도 설치 없이 각 스크립트가 `uvx`로 호출한다.
 
 ## 워크플로우
 
 ### 1. 폴더 선택 — *반드시 먼저 묻는다*
 
-`scripts/list_folders.sh`로 폴더 목록과 각 폴더 메모 수를 보여주고, **사용자에게 어떤 폴더를 처리할지 먼저 묻는다.** 이게 0순위다.
+`$ARGUMENTS`가 있고 **짧은 단어·구** (폴더명으로 해석되는 것)면 그 이름을 폴더로 바로 사용하고 이 단계를 건너뛴다(단, account 중복이 있으면 확인). 자연어 문장이거나 동사가 포함된 설명이면 폴더명이 아닌 맥락 정보로 취급하고 일반 흐름(목록 제시 → 선택)으로 진행한다. **없으면** `scripts/list_folders.sh`로 폴더 목록과 각 폴더 메모 수를 보여주고, **사용자에게 어떤 폴더를 처리할지 먼저 묻는다.** 이게 0순위다.
 
 ```bash
 scripts/list_folders.sh
@@ -118,14 +116,10 @@ scripts/collect.sh "레시피" "여행"
 - `enrich_video.sh <URL> [캡션최소길이=50] [언어=ko]` — 영상 1개 캡션+필요시 STT (collect.sh 하위).
 - `extract_frames.sh <URL> [시작초] [끝초]` — 시각 핵심 영상의 *장면 전환* 프레임 추출 + 컨택트 시트. 작성 LLM이 시트를 보고 대표 컷을 선별하는 용도(추출=스크립트, 선별=LLM). 구간을 주면 그 안에서만.
 - `extract_carousel.sh <URL>` — 인스타 이미지 게시물/캐러셀의 전 슬라이드를 로그인 없이 추출(/embed/captioned/ → gql_data 파싱). 슬라이드 텍스트 판독은 작성 LLM(비전). 영상=extract_frames, 이미지 게시물=extract_carousel.
-- `setup_env.sh` — 스킬 전용 격리 venv(yt-dlp·whisper) 부트스트랩(멱등). collect.sh가 자동 호출. `_env.sh`는 도구 해석기(다른 스크립트가 source).
+- `_env.sh` — 플랫폼별 STT 명령어 선택(`CK_WHISPER_CMD`). Apple Silicon이면 `uvx mlx-whisper`, 그 외 `uvx --from whisper-ctranslate2 whisper-ctranslate2`. enrich_video.sh가 source.
 - `dispose_notes.sh [--confirm] <토큰>...` — 처분이 끝난 메모를 메모앱에서 삭제하는 **메커니즘**. 기본 DRY RUN, `--confirm`으로 실삭제. "무엇을 지울지"는 사용자(시스템)가 토큰으로 넘기고, 스킬은 실행만 한다.
 
 ## 안전
 
-- 추출은 **읽기**다. 원본 메모를 자동으로 삭제·수정하지 않는다. 삭제는 사용자(시스템)가 토큰을 넘길 때 `dispose_notes.sh`로만(기본 DRY RUN, --confirm 필요, 최근 삭제됨으로 이동해 복구 가능).
-- **폴더 선택을 먼저 묻는다** — 잠긴/민감 폴더를 모르고 처리하지 않기 위함이다.
-- **추출 못 한 메모를 정직하게 보고한다** — 잠긴/이메일 계정 메모로 corpus가 부분집합이면 그 사실을 문서에 적는다(이 문서로 흡수·삭제를 정하므로).
 - 링크 해석은 공개 메타데이터·음성 조회 수준 — 인증·로그인이 필요한 콘텐츠를 우회하지 않는다(인스타가 막히면 막힌 대로 표기).
-- 어떤 단계에서도 실제 메모 내용을 이 스킬 레포에 쓰지 않는다.
 - 해석 결과를 지어내지 않는다 — fetch·STT 실패는 실패로 정직하게 표기한다.

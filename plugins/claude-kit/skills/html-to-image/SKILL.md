@@ -1,12 +1,11 @@
 ---
 name: html-to-image
 description: HTML(파일·URL·문자열)을 카드뉴스·앱스토어·OG처럼 비율이 고정된 이미지(PNG/JPEG)로 캡처한다. 폰트·이미지 렌더 완료를 기다려 깨짐을 막고, 여러 장 batch 지원.
+argument-hint: [html-file-or-url] [preset]
 tools: Bash, Read
 ---
 
 # HTML to Image
-
-HTML을 **정해진 비율/크기로 정확히** 캡처해 PNG/JPEG로 내보내는 렌더 primitive. 카드뉴스 슬라이드, 앱스토어 스크린샷, OG 카드처럼 *치수가 고정된 미디어*를 HTML로 만든 뒤 이미지로 뽑을 때 쓴다.
 
 ## 책임 경계 (한다 / 안 한다)
 
@@ -17,14 +16,14 @@ HTML을 **정해진 비율/크기로 정확히** 캡처해 PNG/JPEG로 내보내
 
 ## 렌더 보강 (raw screenshot 대비)
 
-raw `page.screenshot()`의 #1 실패는 *렌더 완료 전 캡처 → 빈/반쪽 이미지*. 이 스킬이 표준화하는 보강:
-
 - **렌더 완료 대기** — `load` 후 `document.fonts.status` 폴링 + 전체 이미지 `decode()` 완료 대기. 폰트·이미지가 준비되기 전에 찍히는 사고를 막는다. `networkidle`은 Playwright 공식 비권장이라 안 쓴다 — `--url`로 비동기 XHR/fetch가 콘텐츠를 채우는 페이지는 `--wait-selector`로 readiness를 명시한다.
 - **정확한 크기·배율** — viewport를 치수에 맞추고 그 영역만 클립(스크롤바·여백 없음). `--scale 2`로 레티나 2배 선명도.
 - **애니메이션 freeze** — Playwright 내장 `animations:'disabled'`로 유한 애니메이션은 끝 상태로 완료, 무한은 초기 상태로 고정해 결정적 프레임을 얻는다(기본 on, `--no-freeze`로 해제). 색·텍스트 래스터도 `--force-color-profile=srgb`·`--font-render-hinting=none`으로 고정.
 - **batch** — `--manifest`로 슬라이드 N장을 한 번에(viewport가 같은 묶음은 context 재사용).
 
 ## 워크플로우
+
+`$ARGUMENTS`가 있으면 URL 여부 먼저 확인(`http://`·`https://` 시작이면 소스로 사용). 아니면 `Glob($ARGUMENTS[0])`로 파일 존재 확인 — 존재하면 파일 소스로 사용. `$ARGUMENTS[1]`(있으면) preset. 둘 다 아니거나 `$ARGUMENTS` 없으면 사용자에게 소스 확인.
 
 1. **소스 라우팅** — 캡처할 HTML이 로컬 파일(`--html`)인지, 로컬 dev 서버/URL(`--url`)인지, 인라인 문자열(`--html-string`)인지 정한다.
 2. **치수 결정** — 알려진 포맷이면 `--preset`(예: `instagram-carousel`), 아니면 `--width/--height`. 목록은 [`references/presets.json`](./references/presets.json).
@@ -69,7 +68,14 @@ Playwright + chromium 필요(최초 1회):
 cd scripts && npm install && npx playwright install chromium
 ```
 
+## Edge Cases
+
+- **외부 폰트·이미지가 느린 HTML**: `load` 대기만으론 렌더가 완료 전에 찍힐 수 있다. `--wait-selector <css>` 또는 `--delay <ms>`로 readiness를 명시한다.
+- **`--url`로 로컬 dev 서버**: 서버가 실행 중인지 먼저 확인하고 캡처한다. 서버가 없으면 연결 오류로 빈 이미지가 나온다.
+- **satori 엔진에 미지원 CSS**: `display:grid`·`z-index`·`position:fixed`·`calc()` 등을 쓰면 satori는 렌더를 건너뛰어 레이아웃이 깨진다. playwright(기본)로 폴백하거나 HTML을 flexbox 전용으로 바꾼다.
+- **출력 경로 미지정**: `--out`을 생략하면 소스 파일명 기반으로 자동 결정된다. batch `--manifest`에선 각 항목의 `out` 필드가 없으면 오류가 난다 — 명시 권장.
+- **batch 중 일부 실패**: manifest N장 중 일부가 렌더 실패하면 그 장만 오류 보고하고 나머지는 계속 진행한다. 처리 후 실패 목록을 사용자에게 알린다.
+
 ## 참고 자산
 
-- [`references/presets.json`](./references/presets.json) — 비율·치수·배율 프리셋 카탈로그(수치 SSOT). 새 포맷은 여기 한 줄 추가하면 `--preset`으로 바로 쓴다. 인스타·OG·트위터·링크드인·카카오·유튜브·핀터레스트·틱톡·App Store·Play Store를 커버.
-  - **App Store 네이밍(breaking)**: `appstore-iphone-6_7`은 제거됐다. 1284×2778(실제 6.5" 디스플레이)은 `appstore-iphone-6_5`로, App Store 필수 사이즈는 `appstore-iphone-6_9`(1320×2868, Apple 허용 6.9" 해상도 중 최대)로 이전한다. iPad 필수는 `appstore-ipad-13`(2064×2752).
+- [`references/presets.json`](./references/presets.json) — 비율·치수·배율 프리셋 카탈로그(수치 SSOT).
