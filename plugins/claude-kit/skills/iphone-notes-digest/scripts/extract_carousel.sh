@@ -17,9 +17,6 @@
 
 set -uo pipefail
 URL="${1:?사용: extract_carousel.sh <인스타 게시물 URL>}"
-SCR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=_env.sh
-source "$SCR/_env.sh"
 WORK="${WORK_DIR:-/tmp/notes-digest-work}"
 CDIR="$WORK/carousel"; mkdir -p "$CDIR"
 rm -f "$CDIR"/slide_*.jpg "$CDIR"/slide_*.mp4 "$CDIR"/contact.jpg
@@ -34,7 +31,7 @@ curl -sL -A "$UA" --max-time 25 "https://www.instagram.com/p/$SHORT/embed/captio
 [[ ! -s "$HTML" ]] && { echo "EMBED_FETCH_FAILED: $URL"; exit 0; }
 
 # gql_data(전 슬라이드 + 캡션) 파싱 후 슬라이드 다운로드
-"$CK_PYTHON" - "$HTML" "$CDIR" <<'PY'
+uv run --no-project python - "$HTML" "$CDIR" <<'PY'
 import sys, json, urllib.request
 html_path, outdir = sys.argv[1], sys.argv[2]
 raw = open(html_path, encoding='utf-8', errors='replace').read()
@@ -88,9 +85,8 @@ PY
 # 컨택트 시트(이미지 슬라이드 한눈 보기용 — 텍스트 판독은 개별 slide를 읽어라)
 imgs=$(ls "$CDIR"/slide_*.jpg 2>/dev/null | wc -l | tr -d ' ')
 if [[ "${imgs:-0}" -gt 0 ]]; then
-  FFMPEG="${CK_FFMPEG:-ffmpeg}"
   COLS=4; ROWS=$(( (imgs + COLS - 1) / COLS ))
-  "$FFMPEG" -y -framerate 1 -pattern_type glob -i "$CDIR/slide_*.jpg" \
+  ffmpeg -y -framerate 1 -pattern_type glob -i "$CDIR/slide_*.jpg" \
     -vf "scale=400:-1,tile=${COLS}x${ROWS}:padding=6:color=white" -frames:v 1 "$CDIR/contact.jpg" 2>/dev/null
   echo "CONTACT_SHEET: $CDIR/contact.jpg"
 fi

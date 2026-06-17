@@ -32,14 +32,10 @@ MODEL="${WHISPER_MODEL:-mlx-community/whisper-large-v3-turbo}"
 SCRATCH="${SCRATCH_DIR:-/tmp/notes-enrich}"
 mkdir -p "$SCRATCH"
 
-# 스킬 전용 격리 venv의 도구 해석(yt-dlp·python·whisper·ffmpeg). 없으면 PATH 폴백.
+# 플랫폼별 STT 명령어 선택
 SCR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_env.sh
 source "$SCR/_env.sh"
-if [[ -z "$CK_YTDLP" ]]; then
-  echo "EXTRACT_FAILED: yt-dlp 없음 (scripts/setup_env.sh 실행)"
-  exit 0
-fi
 
 # --- Threads 게시물: curl + OG bot UA로 추출 (yt-dlp Threads 미지원) ---
 # Threads는 일반 브라우저 UA엔 SPA를 내리고, facebookexternalhit UA엔 OG 태그 포함 HTML을 돌려준다.
@@ -54,7 +50,7 @@ if [[ "$URL" =~ (threads\.net|threads\.com) ]]; then
   # og:title / og:description 추출 + HTML 엔티티 디코딩
   HTML_TMP="$SCRATCH/threads_page.html"
   printf '%s' "$PAGE" > "$HTML_TMP"
-  OG_TITLE=$("$CK_PYTHON" -c "
+  OG_TITLE=$(uv run --no-project python -c "
 import re
 from html import unescape
 html = open('$HTML_TMP').read()
@@ -62,7 +58,7 @@ m = re.search(r'property=\"og:title\"[^>]+content=\"([^\"]*)\"', html) or \
     re.search(r'content=\"([^\"]*)\"[^>]+property=\"og:title\"', html)
 print(unescape(m.group(1)) if m else '')
 " 2>/dev/null || true)
-  OG_DESC=$("$CK_PYTHON" -c "
+  OG_DESC=$(uv run --no-project python -c "
 import re
 from html import unescape
 html = open('$HTML_TMP').read()
@@ -81,7 +77,7 @@ print(unescape(m.group(1)) if m else '')
 fi
 
 # --- 1. 캡션·메타 (다운로드 없이) ---
-if ! META=$("$CK_YTDLP" --skip-download --no-warnings \
+if ! META=$(uvx yt-dlp --skip-download --no-warnings \
       --print "%(uploader)s" --print "%(title)s" --print "%(description)s" "$URL" 2>/dev/null); then
   # 인스타 /p/ 게시물은 이미지 캐러셀일 때 yt-dlp가 막힌다 — 슬라이드 텍스트가 본문이니
   # extract_carousel.sh로 슬라이드를 받아 리뷰 LLM이 비전 판독하라는 신호를 남긴다.
@@ -103,29 +99,25 @@ printf 'CAPTION: %s\n' "$CAPTION"
 # --- 2. 캡션이 충분하면 여기서 끝 ---
 # 공백 제거 후 '문자수'로 판단. wc -m은 로케일에 따라 한글을 바이트로 세어
 # 오판하므로(한글 1자=3바이트), python3로 유니코드 문자수를 정확히 센다.
-CAPTION_LEN=$(printf '%s' "$CAPTION" | tr -d '[:space:]' | "$CK_PYTHON" -c "import sys; print(len(sys.stdin.read()))")
+CAPTION_LEN=$(printf '%s' "$CAPTION" | tr -d '[:space:]' | uv run --no-project python -c "import sys; print(len(sys.stdin.read()))")
 if (( CAPTION_LEN >= MIN_CAPTION )); then
   exit 0
 fi
 
 # --- 3. 캡션이 얕으면 오디오 추출 → STT ---
 echo "CAPTION_SHALLOW: len=${CAPTION_LEN} < ${MIN_CAPTION} → STT"
-VID=$("$CK_YTDLP" --skip-download --no-warnings --print "%(id)s" "$URL" 2>/dev/null)
-# ffmpeg 위치를 명시(yt-dlp가 PATH에서 못 찾는 경우 대비)
-FFLOC=(); [[ -n "$CK_FFMPEG" ]] && FFLOC=(--ffmpeg-location "$CK_FFMPEG")
-if ! "$CK_YTDLP" -x --audio-format mp3 --no-warnings "${FFLOC[@]+"${FFLOC[@]}"}" \
+VID=$(uvx yt-dlp --skip-download --no-warnings --print "%(id)s" "$URL" 2>/dev/null)
+if ! uvx yt-dlp -x --audio-format mp3 --no-warnings \
       -o "$SCRATCH/%(id)s.%(ext)s" "$URL" >/dev/null 2>&1; then
   echo "AUDIO_FAILED: $URL"
   exit 0
 fi
 AUDIO="$SCRATCH/$VID.mp3"
 
-# STT 엔진은 _env.sh가 해석(venv mlx > venv faster > 시스템 폴백)
-if [[ -z "$CK_WHISPER" ]]; then
-  echo "STT_UNAVAILABLE: whisper 엔진 없음 (scripts/setup_env.sh 실행)"
-elif [[ "$CK_WHISPER_KIND" == "mlx" ]]; then
+# STT 엔진은 _env.sh가 플랫폼에 따라 선택(CK_WHISPER_CMD)
+if [[ "$(uname -m)" == "arm64" ]]; then
   echo "STT_SOURCE: mlx-whisper ($MODEL)"
-  "$CK_WHISPER" "$AUDIO" --model "$MODEL" --language "$LANG" \
+  $CK_WHISPER_CMD "$AUDIO" --model "$MODEL" --language "$LANG" \
     --output-dir "$SCRATCH" --output-name "$VID" -f txt >/dev/null 2>&1
   echo "STT:"
   cat "$SCRATCH/$VID.txt"
@@ -133,7 +125,7 @@ else
   # faster-whisper CLI. 모델은 turbo 계열 이름이 다를 수 있어 large-v3로 폴백.
   FW_MODEL="${FASTER_WHISPER_MODEL:-large-v3}"
   echo "STT_SOURCE: faster-whisper ($FW_MODEL)"
-  "$CK_WHISPER" "$AUDIO" --model "$FW_MODEL" --language "$LANG" \
+  $CK_WHISPER_CMD "$AUDIO" --model "$FW_MODEL" --language "$LANG" \
     --output_dir "$SCRATCH" --output_format txt >/dev/null 2>&1
   echo "STT:"
   cat "$SCRATCH/$VID.txt"
