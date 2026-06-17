@@ -28,24 +28,18 @@ WORK="${WORK_DIR:-/tmp/notes-digest-work}"
 FDIR="$WORK/frames"; mkdir -p "$FDIR"
 rm -f "$FDIR"/frame_*.jpg "$FDIR"/contact.jpg
 
-# 스킬 전용 격리 venv의 도구 해석(yt-dlp·ffmpeg). 없으면 PATH 폴백.
-SCR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=_env.sh
-source "$SCR/_env.sh"
-FFMPEG="${CK_FFMPEG:-ffmpeg}"
-
 # 영상 다운로드 (URL 해시로 캐시)
 HASH=$(printf '%s' "$URL" | shasum | cut -c1-12)
 VID="$WORK/vid_$HASH.mp4"
 if [[ ! -f "$VID" ]]; then
-  "${CK_YTDLP:-yt-dlp}" --no-warnings -o "$VID" "$URL" >&2 || { echo "다운로드 실패: $URL" >&2; exit 1; }
+  uvx yt-dlp --no-warnings -o "$VID" "$URL" >&2 || { echo "다운로드 실패: $URL" >&2; exit 1; }
 fi
 
 # 구간 옵션 (input seek)
 SEEK=(); [[ -n "$START" ]] && SEEK+=(-ss "$START"); [[ -n "$END" ]] && SEEK+=(-to "$END")
 
 # 장면 전환 프레임 추출
-"$FFMPEG" -y "${SEEK[@]+"${SEEK[@]}"}" -i "$VID" \
+ffmpeg -y "${SEEK[@]+"${SEEK[@]}"}" -i "$VID" \
   -vf "select='gt(scene,$THRESHOLD)',scale=720:-1" -vsync vfr \
   "$FDIR/frame_%04d.jpg" 2>/dev/null
 
@@ -56,7 +50,7 @@ echo "장면 전환 프레임: ${COUNT}장 (threshold=$THRESHOLD)"
 # 컨택트 시트 (한 장에 타일)
 if (( COUNT > 0 )); then
   COLS=5; ROWS=$(( (COUNT + COLS - 1) / COLS ))
-  "$FFMPEG" -y -framerate 1 -pattern_type glob -i "$FDIR/frame_*.jpg" \
+  ffmpeg -y -framerate 1 -pattern_type glob -i "$FDIR/frame_*.jpg" \
     -vf "scale=320:-1,tile=${COLS}x${ROWS}:padding=4:color=white" -frames:v 1 "$FDIR/contact.jpg" 2>/dev/null
   echo "컨택트 시트: $FDIR/contact.jpg"
 fi
