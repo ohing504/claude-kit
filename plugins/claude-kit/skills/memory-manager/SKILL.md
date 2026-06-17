@@ -2,7 +2,7 @@
 name: memory-manager
 description: ~/.claude 파일 기반 메모리의 cross-silo 중복·오배치·인덱스 bloat를 audit하고 사용자 확인 후 정리(revise)한다.
 argument-hint: [audit|revise]
-tools: Read, Grep, Glob, Bash, Edit, Write
+tools: Read, Grep, Glob, Bash, Edit, Write, Agent
 ---
 
 # memory-manager
