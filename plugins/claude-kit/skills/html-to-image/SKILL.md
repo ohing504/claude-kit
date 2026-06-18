@@ -7,12 +7,12 @@ tools: Bash, Read
 
 # HTML to Image
 
-## 책임 경계 (한다 / 안 한다)
+## 책임 경계 (DO / DON'T)
 
-- **한다**: HTML(파일·URL·문자열) + 치수/비율 → 정확한 픽셀 크기의 PNG/JPEG. 렌더 완료(폰트·이미지)를 기다려 깨짐을 막고, 여러 장을 batch로 뽑는다. 엔진 둘(playwright 기본·satori 옵션), 각자 입력 계약이 다르다 → [엔진 섹션](#엔진--playwright기본--satori).
-- **안 한다 — HTML 만들기**: *무엇을 어떻게 그릴지*는 호출자(card-news 같은 컴포지션) 책임. 이 스킬은 완성된 HTML을 받아 *렌더만* 한다. seam은 HTML이다.
-- **안 한다 — 모션/영상**: 한 장 캡처는 애니메이션을 못 담는다. 움직이는 카드뉴스/릴스는 범위 밖 — Remotion·hyperframes 같은 컴포지션+렌더 프레임워크를 쓴다.
-- **안 한다 — 비율 추측**: 치수는 `--preset`(presets.json) 또는 명시 `--width/--height`로 받는다. 임의로 정하지 않는다.
+- **DO**: HTML(파일·URL·문자열) + 치수/비율 → 정확한 픽셀 크기의 PNG/JPEG. 렌더 완료(폰트·이미지)를 기다려 깨짐을 막고, 여러 장을 batch로 뽑는다. 엔진 둘(playwright 기본·satori 옵션), 각자 입력 계약이 다르다 → [엔진 섹션](#엔진--playwright기본--satori).
+- **DON'T — HTML 만들기**: *무엇을 어떻게 그릴지*는 호출자(card-news 같은 컴포지션) 책임. 이 스킬은 완성된 HTML을 받아 *렌더만* 한다. seam은 HTML이다.
+- **DON'T — 모션/영상**: 한 장 캡처는 애니메이션을 못 담는다. 움직이는 카드뉴스/릴스는 범위 밖 — Remotion·hyperframes 같은 컴포지션+렌더 프레임워크를 쓴다.
+- **DON'T — 비율 추측**: 치수는 `--preset`(presets.json) 또는 명시 `--width/--height`로 받는다. 임의로 정하지 않는다.
 
 ## 렌더 보강 (raw screenshot 대비)
 
