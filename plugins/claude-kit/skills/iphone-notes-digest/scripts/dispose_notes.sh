@@ -42,6 +42,18 @@ osascript <<EOF
 tell application "Notes"
     set tokens to $LIST
     set matched to {}
+    -- (a) x-coredata id 토큰은 본문을 보지 않고 그 메모를 직접 겨냥한다.
+    --     스캔 문서처럼 본문이 비거나 body 접근이 -1700인 메모를 지우는 유일한 길.
+    repeat with t in tokens
+        set tstr to t as string
+        if tstr starts with "x-coredata://" then
+            try
+                set end of matched to (note id tstr)
+            end try
+        end if
+    end repeat
+    -- (b) 그 외 토큰은 '본문에 포함'으로 매칭한다(링크 고유 ID 등).
+    --     body 접근은 try로 감싼다 — 스캔 든 메모에서 -1700로 순회가 죽지 않게.
     repeat with f in (every folder)
         set fname to name of f
         -- 이미 삭제된 사본을 다시 잡지 않도록 '최근 삭제됨' 폴더는 건너뛴다
@@ -50,13 +62,16 @@ tell application "Notes"
         set theNotes to notes of f
         repeat with i from 1 to (count of theNotes)
             set n to item i of theNotes
-            set b to body of n
-            repeat with t in tokens
-                if b contains (t as string) then
-                    set end of matched to n
-                    exit repeat
-                end if
-            end repeat
+            try
+                set b to body of n
+                repeat with t in tokens
+                    set tstr to t as string
+                    if (tstr does not start with "x-coredata://") and (b contains tstr) then
+                        set end of matched to n
+                        exit repeat
+                    end if
+                end repeat
+            end try
         end repeat
         end if
     end repeat
