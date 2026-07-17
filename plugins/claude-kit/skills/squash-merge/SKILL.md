@@ -27,7 +27,10 @@ PR 정보 + 변경 사항:
 
 PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정리)부터 진행.
 
-**머지 가능 사전 점검**: `mergeable == CONFLICTING` 또는 `mergeStateStatus ∈ {DIRTY, BLOCKED, DRAFT, BEHIND}`면 멈추고 사유 보고 — 강제 진행 X (충돌·필수 체크 미통과·base 뒤처짐·초안). `UNKNOWN`이면 잠시 후 재조회. `UNSTABLE`(일부 체크 실패·진행 중이나 머지는 가능)은 사용자에게 경고 후 판단 요청.
+**머지 가능 사전 점검**:
+- `mergeable == CONFLICTING` 또는 `mergeStateStatus ∈ {DIRTY, BLOCKED, DRAFT, BEHIND}` → 멈추고 사유 보고, 강제 진행 X (충돌·필수 체크 미통과·base 뒤처짐·초안).
+- `UNKNOWN` → 잠시 후 재조회.
+- `UNSTABLE`(일부 체크 실패·진행 중이나 머지 가능) → 경고 후 판단 요청.
 
 ### Step 2. squash 메시지 작성 — net diff 사실 기반
 
@@ -46,7 +49,11 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 
 ### Step 3. 실행 전 확인 게이트 (자동 발화·명시 호출 공통)
 
-merge 전 **대상 PR(번호·제목) + squash subject/body를 제시하고 confirm 받는다** — 확인 없이 merge 실행 X (destructive·복구 곤란). "머지하자" 류 자연어 진입도 raw git/gh로 직접 처리 X, 반드시 본 흐름(Step 2 포함).
+**흐름: ① PR(번호·제목) + squash subject/body를 응답 본문에 코드블록으로 출력 → ② confirm.** 확인 없이 merge X (destructive·복구 곤란).
+
+- **subject/body는 본문 텍스트로.** AskUserQuestion `preview` 필드에만 담지 말 것 — preview는 터미널 전용이라 데스크탑·모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
+- confirm 수단은 자유(AskUserQuestion·평문). 내용이 본문에 있으면 매체 무관 표시 — `preview`는 중복일 뿐 유일 표시처 X.
+- "머지하자" 류 자연어 진입도 raw git/gh 직접 처리 X — 본 흐름(Step 2 포함) 경유.
 
 ### Step 4. squash merge 실행
 
@@ -57,9 +64,8 @@ EOF
 )"
 ```
 
-GitHub 기본(개별 commit 이어붙이기) 사용 X — `--subject` + `--body` 명시 의무.
-
-`--delete-branch`로 머지 직후 원격 head 브랜치를 삭제 → Step 5의 `[gone]` 감지를 보장한다 (repo의 auto-delete 설정과 무관하게 일관 동작). gh가 이어서 시도하는 로컬 브랜치 삭제는 worktree를 인식하지 못해 실패할 수 있으나 무방 — 로컬 정리는 Step 5가 worktree-aware하게 담당한다.
+- GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
+- `--delete-branch`: 원격 head 즉시 삭제 → Step 5의 `[gone]` 감지 보장(repo auto-delete 설정 무관). 이어지는 gh의 로컬 삭제는 worktree 미인식으로 실패해도 무방 — 로컬 정리는 Step 5(worktree-aware) 담당.
 
 ### Step 5. 방금 머지한 PR 브랜치만 로컬 정리 (worktree 처리 포함)
 
@@ -89,9 +95,8 @@ else
 fi
 ```
 
-**현재 worktree 자기 자신은 절대 제거·삭제 시도 X.** Claude Code worktree 세션은 실행 동안 자기 worktree에 `git worktree lock`을 걸어 외부 cleanup을 막고(공식 동작), 현재 브랜치는 체크아웃 상태라 — `git worktree remove`도 `git branch -D`도 실패한다. 이 경우 위 스크립트처럼 보존하고, 세션 종료 시 Claude Code가 띄우는 keep/remove worktree 프롬프트에서 정리하도록 안내만 한다 (종료 키 시퀀스는 환경마다 다르므로 특정 키를 안내하지 않는다).
-
-**다른 `[gone]` 브랜치는 건드리지 않는다** — 이 흐름의 책임은 방금 머지한 PR 브랜치 정리까지다. 누적된 다른 `[gone]` 정리는 별도 사용자 판단·별도 도구의 몫.
+- **현재 worktree 자신은 제거·삭제 X** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`·`branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X).
+- **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단·별도 도구 몫.
 
 ### Step 6. base 브랜치 로컬 동기화
 
@@ -109,7 +114,9 @@ else
 fi
 ```
 
-base 브랜치는 `main` 고정이 아니라 **Step 1에서 받은 `baseRefName`**을 쓴다 (develop 등 비-main base 대응). fast-forward 실패 시(로컬 base 미커밋 변경 등) 보고하고 강제 진행 X. linked worktree에서는 `git checkout`을 강행하지 않는다 — base가 메인 워크트리에 이미 체크아웃되어 있어 실패하기 때문.
+- base는 `main` 고정 X → Step 1의 `baseRefName` 사용(develop 등 비-main 대응).
+- fast-forward 실패 시(로컬 base 미커밋 변경 등) 보고 후 강제 진행 X.
+- linked worktree에선 `git checkout` 강행 X — base가 메인 워크트리에 이미 체크아웃돼 실패.
 
 ## Execution
 
