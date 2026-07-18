@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>prompt-forge — 의도 명세 도구 소개</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=IBM+Plex+Sans:wght@300;400;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{ --bg:#0c0e13; --panel:#161a23; --panel2:#1b2029; --line:#2a3040; --hi:#f3efe6; --mid:#c2c5bb; --lo:#8c8f85; --accent:#f5b13d; --grn:#9ed6a0; --blu:#7fb4e3; --red:#e38a6b; }
+body.light{ --bg:#efeae0; --panel:#fbf8f1; --panel2:#f3eee4; --line:#ddd5c5; --hi:#181a16; --mid:#43463e; --lo:#6c6f65; --accent:#b06f12; --grn:#3f7a41; --blu:#2f6aa8; --red:#b0492a; }
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{ background:var(--bg); color:var(--hi); font-family:'IBM Plex Sans',sans-serif; margin:0; line-height:1.55; -webkit-font-smoothing:antialiased; word-break:keep-all; overflow-wrap:break-word; }
+.wrap{ max-width:1060px; margin:0 auto; padding:52px 26px 96px; }
+h1,h2,h3{ font-family:'Fraunces',serif; letter-spacing:-.01em; }
+h1{ font-weight:800; font-size:clamp(40px,6.2vw,64px); line-height:1; margin:0; }
+h2{ font-weight:800; font-size:clamp(23px,3vw,29px); margin:0; }
+h3{ font-weight:600; font-size:18px; margin:0; }
+p{ margin:0; }
+.mono{ font-family:'IBM Plex Mono',monospace; }
+.lo{ color:var(--lo); } .mid{ color:var(--mid); }
+.kick{ font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); }
+.sec-n{ font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--accent); font-weight:600; }
+section{ margin-top:64px; }
+.lede{ font-size:clamp(19px,2.4vw,23px); line-height:1.5; color:var(--mid); max-width:64ch; }
+.card{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px 24px; }
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.hd{ display:flex; align-items:baseline; gap:12px; margin-bottom:22px; flex-wrap:wrap; }
+strong{ color:var(--hi); font-weight:600; }
+em{ font-style:normal; color:var(--accent); }
+code{ font-family:'IBM Plex Mono',monospace; font-size:.92em; background:var(--panel2); border:1px solid var(--line); border-radius:5px; padding:1px 6px; }
+
+/* toggle */
+.toggle{ position:fixed; top:16px; right:16px; z-index:20; font-family:'IBM Plex Mono',monospace; font-size:12px;
+  background:var(--panel); color:var(--mid); border:1px solid var(--line); border-radius:999px; padding:7px 14px; cursor:pointer; }
+.toggle:hover{ color:var(--hi); border-color:var(--accent); }
+
+/* hero */
+.hero-def{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(21px,2.7vw,27px); line-height:1.42; margin-top:24px; max-width:26ch; }
+.hero-def .pin{ color:var(--accent); }
+.hero-meta{ margin-top:22px; display:inline-flex; align-items:center; gap:10px; font-size:14px; color:var(--lo);
+  border:1px solid var(--line); border-radius:999px; padding:7px 15px; }
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--accent); flex:0 0 7px; }
+
+/* problem */
+.prob{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+.prob .card .n{ font-family:'Fraunces',serif; font-weight:800; font-size:30px; color:var(--accent); line-height:1; }
+.prob .card h3{ margin:12px 0 6px; }
+.prob .card p{ font-size:14.5px; color:var(--lo); line-height:1.5; }
+
+/* when / ask */
+.when h3{ font-size:15px; font-family:'IBM Plex Sans'; font-weight:700; letter-spacing:.02em; text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+.when .yes{ color:var(--grn); } .when .no{ color:var(--red); }
+.when .intent{ color:var(--accent); } .when .impl{ color:var(--lo); }
+.when ul{ margin:0; padding:0; list-style:none; }
+.when li{ font-size:15px; padding:9px 0; border-top:1px solid var(--line); color:var(--mid); }
+.when li:first-child{ border-top:none; }
+.when li b{ color:var(--hi); font-weight:600; }
+
+/* flow */
+.flowscroll{ overflow-x:auto; padding-bottom:8px; margin:0 -2px; }
+.flow-row{ display:flex; align-items:stretch; flex-wrap:nowrap; min-width:min-content; }
+.fnode{ flex:1 0 156px; padding:15px 15px 16px; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
+.fnode.heart{ border-color:rgba(245,177,61,.5); background:linear-gradient(180deg,rgba(245,177,61,.08),var(--panel)); }
+.fnode .ft{ font-weight:700; font-size:15px; margin:9px 0 5px; font-family:'Fraunces',serif; }
+.fnode .fs{ font-size:12.5px; color:var(--lo); line-height:1.4; }
+.fbadge{ display:inline-block; font-size:11px; font-weight:600; padding:3px 10px; border-radius:999px; font-family:'IBM Plex Mono',monospace; }
+.fb-auto{ background:rgba(127,180,227,.28); color:var(--blu); border:1px solid rgba(127,180,227,.6); }
+.fb-talk{ background:rgba(245,177,61,.32); color:var(--accent); border:1px solid rgba(245,177,61,.7); }
+.fb-human{ background:rgba(158,214,160,.3); color:var(--grn); border:1px solid rgba(158,214,160,.62); }
+.farr{ display:flex; align-items:center; justify-content:center; flex:0 0 26px; color:var(--lo); font-size:17px; }
+.flow-note{ margin-top:16px; font-size:14.5px; color:var(--mid); display:flex; gap:10px; align-items:flex-start; }
+.flow-note .tag{ flex:0 0 auto; font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; color:var(--accent); border:1px solid rgba(245,177,61,.5); border-radius:6px; padding:2px 8px; margin-top:1px; }
+.legend{ margin-top:14px; display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--lo); font-family:'IBM Plex Mono',monospace; }
+.legend span{ display:inline-flex; align-items:center; gap:6px; }
+.legend i{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+/* matrix */
+.mtx{ width:100%; border-collapse:collapse; }
+.mtx th,.mtx td{ text-align:left; padding:14px 16px; border-bottom:1px solid var(--line); vertical-align:top; }
+.mtx th{ font-size:13px; font-family:'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.05em; color:var(--lo); font-weight:600; }
+.mtx tr:last-child td{ border-bottom:none; }
+.mtx tr.hl td{ background:rgba(245,177,61,.07); }
+.mtx .tgt{ font-family:'Fraunces',serif; font-weight:700; font-size:16px; white-space:nowrap; }
+.mtx .ev{ font-size:14px; color:var(--mid); line-height:1.45; }
+.mtx .one{ font-size:13px; color:var(--lo); white-space:nowrap; }
+.tag-new{ display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px; background:rgba(245,177,61,.32); color:var(--accent); border:1px solid rgba(245,177,61,.7); margin-left:8px; vertical-align:middle; }
+.gate-note{ margin-top:18px; padding:16px 18px; border-radius:12px; background:var(--panel2); border:1px solid var(--line); font-size:14.5px; color:var(--mid); line-height:1.5; }
+.gate-note b{ color:var(--hi); }
+
+/* spec skeleton */
+.logbox{ background:#0a0d13; border:1px solid var(--line); border-radius:13px; padding:20px 22px; font-family:'IBM Plex Mono',monospace; font-size:13.5px; line-height:1.85; overflow-x:auto; white-space:pre-wrap; }
+body.light .logbox{ background:#f3eee4; }
+.logbox .k{ color:var(--accent); display:inline-block; min-width:6.5em; } .logbox .c{ color:var(--lo); }
+.log-feat{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
+.log-feat .card p{ font-size:14px; color:var(--lo); line-height:1.5; margin-top:5px; }
+.log-feat .card b{ color:var(--hi); }
+
+footer{ margin-top:72px; padding-top:22px; border-top:1px solid var(--line); font-size:13.5px; color:var(--lo); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+
+.rise{ animation:rise .6s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes rise{ from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
+@media (prefers-reduced-motion:reduce){ .rise{animation:none} html{scroll-behavior:auto} }
+
+@media (max-width:760px){
+  .grid2,.prob,.log-feat{ grid-template-columns:1fr; }
+  .wrap{ padding:44px 18px 72px; }
+}
+@media print{
+  .toggle{ display:none; } body{ background:#fff; }
+  .card,.logbox{ break-inside:avoid; }
+}
+</style>
+</head>
+<body class="dark">
+<button class="toggle" onclick="document.body.classList.toggle('light'); document.body.classList.toggle('dark');">◑ 라이트 / 다크</button>
+<div class="wrap">
+
+  <!-- ══ HERO ══ -->
+  <header class="rise">
+    <div class="kick">claude-kit &nbsp;·&nbsp; skill</div>
+    <h1 style="margin-top:14px">prompt-forge</h1>
+    <p class="hero-def">대충 던진 요청을 <span class="pin">반응형 인터뷰</span>로 파고들어, 실행에 붙여넣을 <span class="pin">의도 명세</span>로 벼리는 도구.</p>
+    <div class="hero-meta"><span class="dot"></span> 문구를 다듬는 게 아니라 <strong>무엇을 시킬지</strong>를 뽑는다 — 원샷·loop일수록 값이 오른다</div>
+  </header>
+
+  <!-- ══ 1. WHY ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">01</span><h2>왜 필요한가</h2></div>
+    <p class="lede">좋은 결과는 프롬프트를 <strong>예쁘게 다듬어서가 아니라</strong>, 모델에게 <em>무엇을 시킬지</em> — 의도 — 를 명확히 전달하는 데에서 나온다. 대충 던지면 모델이 빈칸을 제멋대로 채우고, 자동화가 깊어질수록 그 틈은 커진다.</p>
+    <div class="prob" style="margin-top:24px">
+      <div class="card"><div class="n">01</div><h3>모호하면 추측한다</h3><p>대충 던진 요청의 빈칸을 모델이 제멋대로 메운다. 시킨 사람의 의도와 어긋난 채로.</p></div>
+      <div class="card"><div class="n">02</div><h3>강할수록 증폭한다</h3><p>강한 모델·되물음 없는 원샷일수록 모호를 <em>"확신 있게, 정교하게 틀린"</em> 결과로 키운다.</p></div>
+      <div class="card"><div class="n">03</div><h3>반복이 키운다</h3><p>loop이 자동으로 N회 돌면, 틀린 방향으로 great efficiency로 N번 간다. 시드가 결과를 가른다.</p></div>
+    </div>
+  </section>
+
+  <!-- ══ 2. WHEN ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">02</span><h2>언제 도는가</h2></div>
+    <div class="grid2 when">
+      <div class="card">
+        <h3 class="yes">발동한다</h3>
+        <ul>
+          <li>다른 실행에 <b>시킬 프롬프트가 필요</b>할 때 — "이거 시킬 프롬프트 짜줘", "loop 돌릴 goal 명세 만들어줘"</li>
+          <li>요청이 <b>짧거나 모호</b>할수록, 되물을 수 없는 <b>원샷·반복 실행</b>일 때 값이 크다</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="no">나서지 않는다</h3>
+        <ul>
+          <li>이미 있는 문서·프롬프트 <b>다듬기</b> — <span class="mono">ai-doc-improver</span> 소관</li>
+          <li>프롬프트를 <b>세션 안에서 실행</b>하는 것 — 산출은 명세 텍스트까지, 실행은 사용자가 딴 데서</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 3. FLOW ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">03</span><h2>어떻게 도는가</h2></div>
+    <p class="lede" style="margin-bottom:26px">인터뷰로 의도를 정밀화한 뒤에야 명세를 쓴다 — <em>건너뛰고 바로 쓰지 않는 게</em> 규칙이다.</p>
+    <div class="flowscroll">
+      <div class="flow-row">
+        <div class="fnode"><span class="fbadge fb-human">1 · 입력</span><div class="ft">rough ask</div><div class="fs">대충 시키고 싶은 것을 받는다. <span class="mono">$ARGUMENTS</span> 또는 발화에서.</div></div>
+        <div class="farr">→</div>
+        <div class="fnode"><span class="fbadge fb-auto">2 · 자동</span><div class="ft">타깃 식별</div><div class="fs">이 명세를 어디에 쓸지. 타깃이 구조·강조점을 바꾼다.</div></div>
+        <div class="farr">→</div>
+        <div class="fnode heart"><span class="fbadge fb-talk">3 · 대화</span><div class="ft">반응형 인터뷰</div><div class="fs">한 번에 1–2개씩, 답에 반응해 고도화. 의도·시나리오·크리티컬만 묻는다.</div></div>
+        <div class="farr">→</div>
+        <div class="fnode"><span class="fbadge fb-auto">4 · 자동</span><div class="ft">의도 명세 작성</div><div class="fs">골격대로. 못 채운 칸은 <b>가정으로 명시</b>(몰래 심지 않는다).</div></div>
+        <div class="farr">→</div>
+        <div class="fnode"><span class="fbadge fb-auto">5 · 자동</span><div class="ft">출력 · 저장</div><div class="fs">짧으면 복붙, 길면 파일. 어느 쪽이든 <b>검토 요약</b>(의도·크리티컬)을 함께.</div></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--grn)"></i> 사람 입력</span>
+      <span><i style="background:var(--blu)"></i> 자동</span>
+      <span><i style="background:var(--accent)"></i> 사람 ↔ AI 왕복</span>
+    </div>
+    <div class="flow-note"><span class="tag">심장</span><div><b style="color:var(--hi)">인터뷰가 이 도구의 심장이다.</b> 요청이 상세해도 질문 1회로 의도를 더 좁힌다 — 원샷·loop에서 모델이 추측할 여지를 이 왕복이 미리 없앤다.</div></div>
+  </section>
+
+  <!-- ══ 4. WHAT TO ASK ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">04</span><h2>무엇을 묻나 — 의도만, 구현은 열어둔다</h2></div>
+    <p class="lede" style="margin-bottom:24px">질문 <strong>수</strong>가 아니라 <em>답에 반응하는</em> 질문이 품질을 만든다 — 그 질문은 의도만 겨눈다.</p>
+    <div class="grid2 when">
+      <div class="card">
+        <h3 class="intent">묻는다 · 의도</h3>
+        <ul>
+          <li><b>목적</b> — 궁극에 뭘 얻나. 성공한 결과는 어떤 모습인가(성공 기준)</li>
+          <li><b>시나리오</b> — 입력은 뭐고 출력은 어디 쓰이나. 누가·언제 실행하나</li>
+          <li><b>크리티컬 결정</b> — 되돌리기 어렵거나 값 큰 선택(범위·보안·반드시 지킬 제약)</li>
+          <li><b>실패 모드</b> — 특히 걱정되는 오작동·엣지 (ultracode 타깃에서 중요)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3 class="impl">안 묻는다 · 구현</h3>
+        <ul>
+          <li>코드 표현·변수명·<b>라이브러리 선택</b>·N 값 같은 세부</li>
+          <li>문구 다듬기 — 프롬프트가 열어두거나 <b>실행 측 자율</b>에 맡긴다</li>
+        </ul>
+      </div>
+    </div>
+    <div class="gate-note">안 묻는다고 방치가 아니다 — 답이 <b>모호하면 그 자리서 파고든다</b>("빠르게"가 지연인가 처리량인가). 의도는 끝까지 좁히고 구현 세부만 자율로 연다.</div>
+  </section>
+
+  <!-- ══ 5. TARGET DELTA ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">05</span><h2>타깃별 델타 — 어디 쓰느냐가 명세를 바꾼다</h2></div>
+    <p class="lede" style="margin-bottom:24px">같은 의도라도 <strong>어디서 실행하느냐</strong>에 따라 더할 것이 다르다 — 타깃 하나의 델타만 얹는다.</p>
+    <div class="card" style="padding:6px 10px; overflow-x:auto">
+    <table class="mtx">
+      <thead><tr><th>타깃</th><th>명세에 더하는 것</th><th>한 줄 원칙</th></tr></thead>
+      <tbody>
+        <tr><td class="tgt">ultracode</td><td class="ev">엣지·실패 모드 열거, 자체 검증·애드버서리얼 체크 요구, 되돌리기 어려운 동작 전 확인 게이트, 검증 증거(테스트·실행) 요구</td><td class="one">안정 &gt; 속도</td></tr>
+        <tr><td class="tgt">Fable 원샷</td><td class="ev">모든 맥락을 앞에 몰아넣기(뒤늦은 참조 금지), 출력 계약 엄격 고정(형식·길이·포함/제외), 되묻지 말고 명시한 가정으로 진행</td><td class="one">애매함 제로</td></tr>
+        <tr class="hl"><td class="tgt">loop 시드<span class="tag-new">NEW</span></td><td class="ev">목표 + <b>완료 정의</b>(definition-of-done) + <b>검증자</b>(테스트·스키마·diff 등 자동 판별 수단) + <b>종료조건</b>을 대화가 아니라 <b>바깥 파일</b>에 반복 재현되게 고정</td><td class="one">매 반복 재현</td></tr>
+        <tr><td class="tgt">일반 에이전트</td><td class="ev">위 둘의 중간. 구조·성공 기준·제약은 유지하되 상호작용 여지를 열어둔다(막히면 되물어도 됨)</td><td class="one">균형</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="gate-note"><b>loop 시드</b>는 런타임이 자동 반복하며 <b>매 회 읽는 명세</b>다. 검증자가 없으면 loop은 오답을 성공으로 오판하므로, 자동 판별 수단이 핵심이다.</div>
+  </section>
+
+  <!-- ══ 6. SPEC SKELETON ══ -->
+  <section class="rise">
+    <div class="hd"><span class="sec-n">06</span><h2>의도 명세의 골격</h2></div>
+    <p class="lede" style="margin-bottom:22px">산출물은 이 골격을 채운다 — <span class="mono">맥락을 앞에, 출력 계약을 뒤에</span> 두는 순서가 정확도를 높인다.</p>
+    <div class="logbox"><span class="k">[역할]</span> 무엇으로서 작업하는가 <span class="c">(필요 시)</span>
+<span class="k">[맥락]</span> 배경·입력·전제 <span class="c"># Fable 원샷이면 모든 정보를 여기 앞에 몰아넣는다</span>
+<span class="k">[목표]</span> 달성할 것 + 성공 기준 <span class="c">(성공한 결과의 구체적 모습)</span>
+<span class="k">[단계]</span> 모호어 없는 명시적 번호 단계 <span class="c">(필요한 것만, 억지 분해 금지)</span>
+<span class="k">[제약]</span> 반드시 지킬 것 / 절대 하면 안 되는 것 / 크리티컬 결정
+<span class="k">[출력]</span> 형식·길이·포함·제외 <span class="c"># 엄격히</span>
+<span class="k">[타깃 델타]</span> 위 05에서 해당분 하나</div>
+    <div class="log-feat">
+      <div class="card"><h3>모호어 제거</h3><p>"적절히·알아서·필요에 따라"를 <b>명시 단계·기준</b>으로 대체한다. 명세에 애매함을 남기지 않는 게 인터뷰의 목적이었다.</p></div>
+      <div class="card"><h3>긍정형 지시</h3><p>금지 나열보다 <b>"무엇을 하라"</b>. 근거 없는 대문자 명령(ALWAYS/NEVER) 대신 이유를 동반한 서술로.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>claude-kit · <span class="mono">skills/prompt-forge/SKILL.md</span></span>
+    <span class="mono">문구가 아니라 의도 — loop 시대의 명세 도구</span>
+  </footer>
+
+</div>
+<script>
+  // staggered reveal
+  document.querySelectorAll('.rise').forEach((el,i)=>{ el.style.animationDelay=(i*0.08)+'s'; });
+</script>
+</body>
+</html>
