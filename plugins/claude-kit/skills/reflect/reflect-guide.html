@@ -58,7 +58,7 @@ code{ font-family:'IBM Plex Mono',monospace; font-size:.92em; background:var(--p
 /* flow */
 .flowscroll{ overflow-x:auto; padding-bottom:8px; margin:0 -2px; }
 .flow-row{ display:flex; align-items:stretch; flex-wrap:nowrap; min-width:min-content; }
-.fnode{ flex:0 0 152px; padding:15px 15px 16px; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
+.fnode{ flex:1 0 152px; padding:15px 15px 16px; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
 .fnode .ft{ font-weight:700; font-size:15px; margin:9px 0 5px; font-family:'Fraunces',serif; }
 .fnode .fs{ font-size:12.5px; color:var(--lo); line-height:1.4; }
 .fbadge{ display:inline-block; font-size:11px; font-weight:600; padding:3px 10px; border-radius:999px; font-family:'IBM Plex Mono',monospace; }
@@ -99,7 +99,7 @@ code{ font-family:'IBM Plex Mono',monospace; font-size:.92em; background:var(--p
 .tone .neg-c{ color:var(--lo); text-decoration:line-through; text-decoration-color:rgba(227,138,107,.5); }
 
 /* log */
-.logbox{ background:#0a0d13; border:1px solid var(--line); border-radius:13px; padding:18px 20px; font-family:'IBM Plex Mono',monospace; font-size:13.5px; line-height:1.7; overflow-x:auto; }
+.logbox{ background:#0a0d13; border:1px solid var(--line); border-radius:13px; padding:18px 20px; font-family:'IBM Plex Mono',monospace; font-size:13.5px; line-height:1.7; overflow-x:auto; white-space:pre-wrap; }
 body.light .logbox{ background:#f3eee4; }
 .logbox .k{ color:var(--accent); } .logbox .e{ color:var(--blu); } .logbox .c{ color:var(--lo); }
 .log-feat{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
@@ -230,14 +230,12 @@ footer{ margin-top:72px; padding-top:22px; border-top:1px solid var(--line); fon
   <section class="rise">
     <div class="hd"><span class="sec-n">06</span><h2>로그 — 재발을 데이터로</h2></div>
     <p class="lede" style="margin-bottom:22px">모든 진단은 <code>~/.claude/reflections/</code>에 스키마로 쌓인다. free-form이 아니라 기계가 읽을 수 있는 필드라 재발과 나이를 계산할 수 있다.</p>
-    <div class="logbox">
-<span class="c">--- ~/.claude/reflections/2026-07-18-commit-gate.md</span>
+    <div class="logbox"><span class="c">--- ~/.claude/reflections/2026-07-18-commit-gate.md</span>
 <span class="k">date</span>: 2026-07-18
 <span class="k">cause</span>: <span class="e">unreached</span>   <span class="c"># absent | wrong | unreached | conflict | behavior | intent-underspecified</span>
 <span class="k">scope</span>: <span class="e">repo</span>       <span class="c"># repo | task | global</span>
 <span class="k">disposition</span>: <span class="e">now</span>  <span class="c"># now | separate-session</span>
-<span class="k">status</span>: <span class="e">applied</span>   <span class="c"># logged | routed | applied | rejected</span>
-    </div>
+<span class="k">status</span>: <span class="e">applied</span>   <span class="c"># logged | routed | applied | rejected</span></div>
     <div class="log-feat">
       <div class="card"><h3>재발 탐지</h3><p><code>grep "cause:"</code>로 같은 원인의 누적을 센다. 반복되면 <b>hook 승격</b>의 근거 — 프롬프트 준수율보다 결정적이다.</p></div>
       <div class="card"><h3>stale 관리</h3><p><b>date + status</b>로 나이를 잰다. 30일 지난 미반영은 재검토, 90일은 아카이브 후보로 <b>보고</b>(자동 삭제 없음).</p></div>
