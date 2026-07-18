@@ -47,6 +47,8 @@ AI agent가 읽는 문서(CLAUDE.md·SKILL.md·에이전트 정의·README·주�
 
 지침(스킬·CLAUDE.md·메모리)이 있는데 어긋난 동작을 지적받았을 때, 변명 없이 진짜 근본원인을 진단하고 개선안을 원인 유형별 목적지(지침 수정·문서 리라이트·스킬 이슈·gh issue)로 라우팅하는 반성문 도구. 진단은 "이 산출물이 이 조항을 지켰나"라는 평가형으로 하고, "깜빡했다"류 서사는 근본원인으로 인정하지 않는다. 진단 로그는 `~/.claude/reflections/`에 쌓아 재발을 추적한다. 완료 전을 막는 deep-verify와 짝을 이뤄, 빠져나간 위반을 사후에 잡는다.
 
+목적·발동 조건·흐름은 [소개 문서(HTML 렌더)](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/reflect/reflect-guide.html)에서 한눈에 볼 수 있다.
+
 ### iphone-notes-digest (macOS 전용)
 
 Apple Notes 메모를 추출하고, 안의 링크·영상(인스타 릴스 캡션, 음성으로만 설명하는 영상은 STT까지)을 해석해 메모별 다이제스트(사실) 문서로 정리한다. 살릴지/버릴지 판단은 그 문서를 보는 사용자(또는 노트 시스템) 몫 — 스킬은 사실만 기록한다.
