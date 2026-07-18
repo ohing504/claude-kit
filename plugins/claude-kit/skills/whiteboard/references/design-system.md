@@ -32,6 +32,7 @@ SKILL.md의 3·4·5단계(미학 커밋 · 스택 라우팅 · 단일 HTML 출�
 - **타이포**: 고대비 페어링. 약한 웨이트(100/200) vs 강한 웨이트(800/900). 크기 점프 3배 이상. 디스플레이는 세리프, 데이터·라벨은 모노.
   - **한글(CJK) 줄바꿈 — `word-break:keep-all`로 어절 중간 끊김을 막는다.** 기본값은 한글을 음절 단위로 끊어("진짜 원\n인"처럼) 어색하다. `body`에 `word-break:keep-all; overflow-wrap:break-word`를 걸어 어절(띄어쓰기 단위)을 보존하고, 넘치는 긴 영어·URL만 끊는다. 한글 산출물의 가장 흔한 첫인상 결함.
   - **가독성 하한 — 어떤 텍스트도 14px 미만으로 두지 않는다.** 테이블 헤더(`th`)·캡션·범례·작은 주석·모노 라벨이 가장 자주 위반한다. 본문 16px+, 보조 텍스트 14px+. "작게 = 세련됨"이 아니다 — 다시 읽으려고 만든 문서다.
+  - **여러 줄 코드·명세 블록 — `white-space:pre-wrap`을 건다.** monospace 코드박스(로그·스키마·프롬프트 골격처럼 줄 구조가 곧 의미인 블록)에 이걸 빼면 소스 줄바꿈이 무시돼 한 문단으로 뭉친다. 골든 템플릿의 `.code` 클래스에 내장돼 있으니 여러 줄 블록은 그걸 쓴다.
 - **색**: 지배색 + 날카로운 액센트(고르게 분산된 소심한 팔레트 금지). CSS 변수로 토큰화. 데이터 팔레트는 색맹 안전하게.
 - **모션**: 기본은 1회 오케스트레이션된 페이지로드(staggered `animation-delay` reveal). 그 이상은 명시 요청 시만. `prefers-reduced-motion` 존중.
 - **배경**: 평면이 지루하면 미묘한 질감(노이즈·그레인·그라데이션 메시) 하나. 과용 금지.
@@ -73,7 +74,7 @@ N=6: 6×160 + 5×28 = 1100px → 한 줄 OK (빡빡)
 N=7: 7×160 + 6×28 = 1288px → 초과 → scroll 또는 snake
 ```
 
-N≤6은 `overflow-x:auto` 스크롤 단일 행, N≥7은 snake 2행.
+N≤6은 `overflow-x:auto` 스크롤 단일 행, N≥7은 snake 2행. 단일 행 노드는 `flex-grow:1`로 **여유폭이 있으면 펴서 채우고**(왼쪽 몰림·오른쪽 여백 방지) 합이 컨테이너를 넘으면 shrink 없이 스크롤한다 — snake 행은 정렬을 위해 고정폭을 유지한다.
 
 ### 단일 행 템플릿 (N≤6)
 
@@ -81,6 +82,7 @@ N≤6은 `overflow-x:auto` 스크롤 단일 행, N≥7은 snake 2행.
 .flow-row { display:flex; align-items:stretch; flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
 .fnode    { flex:0 0 160px; padding:14px 15px; border-radius:13px;
             background:var(--panel2); border:1px solid var(--line); }
+.flow-row .fnode{ flex-grow:1; }  /* 단일 행: 여유폭 채움(왼쪽 몰림·오른쪽 여백 방지). snake는 고정폭 유지 */
 .fnode .ft{ font-weight:700; font-size:15px; margin-bottom:4px; }
 .fnode .fs{ font-size:13px; color:var(--lo); line-height:1.35; }
 .fbadge   { display:inline-block; font-size:11px; font-weight:600; padding:2px 9px;
@@ -162,6 +164,7 @@ N≤6은 `overflow-x:auto` 스크롤 단일 행, N≥7은 snake 2행.
   body{ background:var(--bg); color:var(--hi); font-family:'IBM Plex Sans',sans-serif; margin:0; word-break:keep-all; overflow-wrap:break-word; } /* keep-all: 한글 어절 중간 끊김 방지 */
   h1,h2{ font-family:'Fraunces',serif; font-weight:800; }
   .mono{ font-family:'IBM Plex Mono',monospace; }
+  .code{ font-family:'IBM Plex Mono',monospace; font-size:13.5px; line-height:1.75; white-space:pre-wrap; overflow-x:auto; } /* pre-wrap: 여러 줄 코드/명세의 소스 줄바꿈 보존 (없으면 한 문단으로 뭉침) */
   /* 가독성 하한 — 본문 16px+, 보조 14px+, 어떤 텍스트도 14px 미만 금지 */
   table{ font-size:16px; } th{ font-size:14px; }
   .cap{ font-size:14px; color:var(--lo); }
