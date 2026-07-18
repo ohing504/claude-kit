@@ -39,6 +39,14 @@ AI agent가 읽는 문서(CLAUDE.md·SKILL.md·에이전트 정의·README·주�
 
 `~/.claude` 파일 기반 메모리의 cross-silo 중복·오배치·인덱스 bloat를 audit하고, 사용자 확인을 받은 뒤 정리(revise)한다.
 
+### deep-verify
+
+비자명한 산출물(조사·문서·설계안·경량 코딩·무인 파이프라인)을 완료 보고하기 전에 스펙 재대조·자기 반박·증거 수집을 강제하는 자가검증 게이트. "될 것 같다"로 끝나는 완료를 막는다. oh-my-harness 정식 플로우에서는 하네스 검증이 우선.
+
+### reflect
+
+지침(스킬·CLAUDE.md·메모리)이 있는데 어긋난 동작을 지적받았을 때, 변명 없이 진짜 근본원인을 진단하고 개선안을 원인 유형별 목적지(지침 수정·문서 리라이트·스킬 이슈·gh issue)로 라우팅하는 반성문 도구. 진단은 "이 산출물이 이 조항을 지켰나"라는 평가형으로 하고, "깜빡했다"류 서사는 근본원인으로 인정하지 않는다. 진단 로그는 `~/.claude/reflections/`에 쌓아 재발을 추적한다. 완료 전을 막는 deep-verify와 짝을 이뤄, 빠져나간 위반을 사후에 잡는다.
+
 ### iphone-notes-digest (macOS 전용)
 
 Apple Notes 메모를 추출하고, 안의 링크·영상(인스타 릴스 캡션, 음성으로만 설명하는 영상은 STT까지)을 해석해 메모별 다이제스트(사실) 문서로 정리한다. 살릴지/버릴지 판단은 그 문서를 보는 사용자(또는 노트 시스템) 몫 — 스킬은 사실만 기록한다.
@@ -66,7 +74,7 @@ PR을 squash merge하고, squash 메시지를 net diff 사실만으로 정리(PR
 
 > yt-dlp·whisper 등 나머지 Python 의존성은 첫 실행 때 `~/.cache/capture-kit` 격리 venv에 자동 설치된다 — 전역 환경을 건드리지 않는다.
 
-브라우저를 쓰는 스킬: `whiteboard`는 렌더 검증(`verify_render.sh`)에 **Chrome/Chromium**, `html-to-image`는 **playwright + chromium**, `browser-session`은 **patchright(또는 playwright) + Chrome**을 쓴다. `ai-doc-improver`·`memory-manager`는 별도 의존성이 없다.
+브라우저를 쓰는 스킬: `whiteboard`는 렌더 검증(`verify_render.sh`)에 **Chrome/Chromium**, `html-to-image`는 **playwright + chromium**, `browser-session`은 **patchright(또는 playwright) + Chrome**을 쓴다. `ai-doc-improver`·`memory-manager`·`deep-verify`·`reflect`는 별도 의존성이 없다.
 
 ## 사용 예시
 
