@@ -23,14 +23,14 @@ claude plugin install claude-kit@claude-kit
 
 세션에서 자연어로 호출한다. 상세는 각 스킬의 `SKILL.md`에 있다.
 
-### 시각화
+### 📊 시각화
 
 | 스킬 | 하는 일 |
 |---|---|
 | **whiteboard** | 복잡한 논의·선택지 비교를, 무엇을 그릴지 합의한 뒤 자기완결 HTML 한 장으로 시각화(렌더 검증까지) |
 | **html-to-image** | 완성 HTML을 카드뉴스·OG처럼 비율 고정 이미지(PNG/JPEG)로 캡처 |
 
-### AI 문서·프롬프트
+### 📝 AI 문서·프롬프트
 
 | 스킬 | 하는 일 |
 |---|---|
@@ -38,20 +38,20 @@ claude plugin install claude-kit@claude-kit
 | **prompt-forge** | 대충 던진 요청을 인터뷰로 파고들어 의도 명세(intent spec)로 — 문구가 아니라 의도를 벼린다 · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/prompt-forge/prompt-forge-guide.html) |
 | **memory-manager** | `~/.claude` 파일 메모리의 중복·오배치·인덱스 bloat 정리 |
 
-### 품질 게이트
+### ✅ 품질 게이트
 
 | 스킬 | 하는 일 |
 |---|---|
 | **deep-verify** | 완료 보고 전 스펙 재대조·자기 반박·증거 수집을 강제("될 것 같다" 차단) |
-| **reflect** | 지침 위반을 증거로 진단→개선 라우팅, 로그로 재발 추적 · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/reflect/reflect-guide.html) |
+| **reflect** | **AI가 쓰는 반성문** — 지침을 어겼을 때 변명 없이 증거로 진단하고 개선안을 목적지로 라우팅(로그로 재발 추적) · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/reflect/reflect-guide.html) |
 
-### 캡처
+### 📥 캡처
 
 | 스킬 | 하는 일 |
 |---|---|
 | **iphone-notes-digest** _(macOS)_ | Apple Notes 메모·링크·영상(음성만 있는 건 STT까지)을 메모별 다이제스트로 정리 |
 
-### Git·브라우저
+### 🔧 Git·브라우저
 
 | 스킬 | 하는 일 |
 |---|---|
