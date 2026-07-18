@@ -30,6 +30,7 @@ SKILL.md의 3·4·5단계(미학 커밋 · 스택 라우팅 · 단일 HTML 출�
 "디자인"을 한 덩어리로 두지 말고 축별로 정한다:
 
 - **타이포**: 고대비 페어링. 약한 웨이트(100/200) vs 강한 웨이트(800/900). 크기 점프 3배 이상. 디스플레이는 세리프, 데이터·라벨은 모노.
+  - **한글(CJK) 줄바꿈 — `word-break:keep-all`로 어절 중간 끊김을 막는다.** 기본값은 한글을 음절 단위로 끊어("진짜 원\n인"처럼) 어색하다. `body`에 `word-break:keep-all; overflow-wrap:break-word`를 걸어 어절(띄어쓰기 단위)을 보존하고, 넘치는 긴 영어·URL만 끊는다. 한글 산출물의 가장 흔한 첫인상 결함.
   - **가독성 하한 — 어떤 텍스트도 14px 미만으로 두지 않는다.** 테이블 헤더(`th`)·캡션·범례·작은 주석·모노 라벨이 가장 자주 위반한다. 본문 16px+, 보조 텍스트 14px+. "작게 = 세련됨"이 아니다 — 다시 읽으려고 만든 문서다.
 - **색**: 지배색 + 날카로운 액센트(고르게 분산된 소심한 팔레트 금지). CSS 변수로 토큰화. 데이터 팔레트는 색맹 안전하게.
 - **모션**: 기본은 1회 오케스트레이션된 페이지로드(staggered `animation-delay` reveal). 그 이상은 명시 요청 시만. `prefers-reduced-motion` 존중.
@@ -58,6 +59,7 @@ HTML/CSS 직접 구현 플로우의 3대 실패 패턴을 피한다:
 1. **`flex-wrap:wrap` 금지** — 뷰포트 너비에 따라 노드가 무작위로 줄바꿈. 플로우 카드에선 항상 `flex-wrap:nowrap`.
 2. **배지 `position:absolute; top:-Npx` 금지** — 배경이 반투명이면 아래 내용이 비치고, 컨테이너 경계 밖으로 튀어나와 겹침 발생. **배지는 카드 내 첫 인라인 요소(`display:inline-block; margin-bottom:8px`)로**.
 3. **배지 배경 alpha < 0.28 금지** — 0.14~0.16 수준은 투명해 보임. **alpha ≥ 0.28**, border alpha ≥ 0.65.
+4. **배지 축 혼재 금지 (정보 설계)** — 여러 노드에 배지를 달면 한 축으로 통일한다. '자동/사람' 같은 실행 성격과 '승인 전' 같은 순서를 한 세트에 섞으면 독자가 배지 축을 못 읽는다. 특정 노드 강조는 배지가 아니라 별도 노트로 뺀다.
 
 ### 너비 계산 (코딩 전 필수)
 
@@ -157,7 +159,7 @@ N≤6은 `overflow-x:auto` 스크롤 단일 행, N≥7은 snake 2행.
 <style>
   :root{ --bg:#0c0e13; --panel:#161a23; --hi:#f3efe6; --mid:#c2c5bb; --lo:#8c8f85; --accent:#f5b13d; }
   body.light{ --bg:#efeae0; --panel:#fbf8f1; --hi:#181a16; --mid:#43463e; --lo:#6c6f65; }
-  body{ background:var(--bg); color:var(--hi); font-family:'IBM Plex Sans',sans-serif; margin:0; }
+  body{ background:var(--bg); color:var(--hi); font-family:'IBM Plex Sans',sans-serif; margin:0; word-break:keep-all; overflow-wrap:break-word; } /* keep-all: 한글 어절 중간 끊김 방지 */
   h1,h2{ font-family:'Fraunces',serif; font-weight:800; }
   .mono{ font-family:'IBM Plex Mono',monospace; }
   /* 가독성 하한 — 본문 16px+, 보조 14px+, 어떤 텍스트도 14px 미만 금지 */
