@@ -57,6 +57,7 @@ claude plugin install claude-kit@claude-kit
 |---|---|
 | **browser-session** | 로그인 세션을 프로파일에 저장·재사용하는 크롤링·자동화 가이드(Python/JS) |
 | **commit** | 변경을 커밋(발화 범위 따라 push·PR), 세션 대화 맥락 차단 |
+| **git-issue** | 이슈 제목, 본문, 라벨 규격(제목은 증상 서술문, 본문 4블록) + 생성 시점 가드 hook |
 | **squash-merge** | PR squash merge + 메시지 정리 + 로컬 정리·main 동기화 |
 
 ## 사용 예시
