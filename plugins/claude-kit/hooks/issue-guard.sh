@@ -22,37 +22,63 @@ case "$cmd" in
 esac
 
 # ── 본문 길이 ────────────────────────────────────────────────────────────────
+# --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
 body=""
-if body_file=$(printf '%s' "$cmd" | grep -oE -- '(--body-file|(^|[[:space:]])-F)[[:space:]]+[^[:space:]]+' | tail -1 | awk '{print $NF}'); then
-  if [ -n "$body_file" ] && [ "$body_file" != "-" ] && [ -f "$body_file" ]; then
-    body=$(cat "$body_file")
-  fi
+body_file=$(printf '%s' "$cmd" \
+  | grep -oE -- '(--body-file|(^|[[:space:]])-F)[=[:space:]][[:space:]]*[^[:space:]]+' \
+  | tail -1 \
+  | sed -E 's/^.*(--body-file|-F)[=[:space:]][[:space:]]*//' || true)
+body_file=${body_file%\"}; body_file=${body_file#\"}
+body_file=${body_file%\'}; body_file=${body_file#\'}
+if [ -n "$body_file" ] && [ "$body_file" != "-" ] && [ -f "$body_file" ]; then
+  body=$(cat "$body_file")
 fi
 
 # heredoc 형태: --body "$(cat <<'EOF' ... EOF)". 실측상 가장 흔한 생성 패턴이다.
-# 종료 태그를 여는 줄에서 읽어 그 태그로 닫는다 (EOF 외 라벨과 <<- 형태도 처리).
+# 이슈 본문과 무관한 heredoc(다른 파일 작성 등)을 재지 않도록, 여는 줄이 본문
+# 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 캡처한다.
+# 종료 태그는 여는 줄에서 읽어 그 태그로 닫는다 (EOF 외 라벨과 <<- 형태도 처리).
 if [ -z "$body" ]; then
-  body=$(printf '%s' "$cmd" | awk '
-    !started && /<</ {
+  body=$(printf '%s' "$cmd" | awk -v want="$body_file" '
+    !started && /<</ && ($0 ~ /--body|-b[ =]|gh issue create/ || (want != "" && index($0, want) > 0)) {
       if (match($0, /<<-?\047?"?[A-Za-z_][A-Za-z_0-9]*"?\047?/)) {
-        tag = substr($0, RSTART, RLENGTH)
+        raw = substr($0, RSTART, RLENGTH)
+        indented = (index(raw, "<<-") == 1)
+        tag = raw
         gsub(/[<>\-\047"]/, "", tag)
         started = 1
       }
       next
     }
-    started && $0 == tag { exit }
-    started { print }
+    started {
+      line = $0
+      if (indented) sub(/^[ \t]+/, "", line)
+      if (line == tag) exit
+      print
+    }
   ')
 fi
 
-# 인라인 --body "..." 형태
+# 인라인 --body "..." / --body '...' 형태
 if [ -z "$body" ]; then
-  body=$(printf '%s' "$cmd" | perl -0777 -ne 'print $1 if /(?:--body|(?:^|\s)-b)[= ]"((?:[^"\\]|\\.)*)"/s' 2>/dev/null || true)
+  body=$(printf '%s' "$cmd" | perl -0777 -ne 'print(($1 // $2)) if /(?:--body|(?:^|\s)-b)[= ](?:"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27)/s' 2>/dev/null || true)
 fi
 
+# wc -m은 로케일이 UTF-8일 때만 문자를 센다. 아니면 바이트를 세어 한글 본문이
+# 3배로 계산되고 정상 길이가 차단된다. 1문자 프로브로 쓸 수 있는 로케일을 고른다.
+char_locale=""
 if [ -n "$body" ]; then
-  len=$(printf '%s' "$body" | LC_ALL=en_US.UTF-8 wc -m | tr -d ' ')
+  for loc in C.UTF-8 en_US.UTF-8 "${LC_ALL:-}" "${LANG:-}"; do
+    [ -n "$loc" ] || continue
+    if [ "$(printf '\303\244' | LC_ALL="$loc" wc -m 2>/dev/null | tr -d ' ')" = "1" ]; then
+      char_locale=$loc
+      break
+    fi
+  done
+fi
+
+if [ -n "$body" ] && [ -n "$char_locale" ]; then
+  len=$(printf '%s' "$body" | LC_ALL="$char_locale" wc -m | tr -d ' ')
   if [ "$len" -gt "$BODY_LIMIT" ]; then
     reason="이슈 본문이 ${len}자로 상한 ${BODY_LIMIT}자를 넘습니다. 본문이 길수록 낡을 면적이 커지고 머지율이 떨어집니다(길이를 줄이면 단위당 +9%).
 
@@ -80,6 +106,8 @@ transcript=$(printf '%s' "$input" | jq -r '.transcript_path // ""')
 [ -n "$transcript" ] && [ -f "$transcript" ] || exit 0
 
 # 마지막 실제 사용자 발화. content가 문자열인 것만 — 배열은 tool_result다.
+# isMeta는 슬래시 커맨드 caveat나 훅 주입 컨텍스트라 실제 발화가 아니다.
+# @json으로 한 줄에 담아야 여러 줄 발화의 둘째 줄 이후가 잘리지 않는다.
 # tail -r은 BSD, tac은 GNU. 둘 다 없으면 이 검사를 건너뛴다.
 if command -v tac >/dev/null 2>&1; then
   reverse=tac
@@ -90,7 +118,7 @@ else
 fi
 
 last_user=$($reverse "$transcript" 2>/dev/null \
-  | jq -r 'select(.type=="user") | select((.message.content | type) == "string") | .message.content' 2>/dev/null \
+  | jq -r 'select(.type=="user") | select(.isMeta != true) | select((.message.content | type) == "string") | .message.content | @json' 2>/dev/null \
   | head -1 || true)
 
 [ -n "$last_user" ] || exit 0

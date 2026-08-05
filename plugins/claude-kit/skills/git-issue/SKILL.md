@@ -24,7 +24,7 @@ allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(git:*), Read, Grep, Glo
 
 **생성 전 중복 검색**: `gh search issues --repo <owner/repo> "<핵심어>" --state open`. 유사한 것이 있으면 새로 만들지 말고 그 이슈에 붙인다.
 
-**close 권한 없음**: 이슈는 PR 본문 `Closes #N`으로 머지와 함께 닫는다. `gh issue close`를 직접 실행하지 않는다.
+**close 권한 없음**: 이슈는 PR 본문 `Closes #N`으로 머지와 함께 닫는다. `gh issue close`를 직접 실행하지 않는다. 단 `Closes`는 PR이 기본 브랜치를 타겟할 때만 동작하므로, base가 기본 브랜치가 아니면 머지 후 close가 필요함을 사용자에게 보고하고 확인을 받는다.
 
 ## 제목 — 증상 서술문
 
@@ -56,6 +56,8 @@ allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(git:*), Read, Grep, Glo
 ## 하지 말 것
 (범위 밖)
 ```
+
+**본문은 1,200자 이하.** `issue-guard` hook이 `gh issue create`를 가로채 초과분을 deny한다.
 
 블록을 늘리지 않는다. 칸이 늘면 채우기 위한 문장이 늘고, 그건 에이전트 입력에서 노이즈다. 8절 템플릿을 쓴 저장소는 완료 조건 보유율 97%인데 그 이슈들로 backlog가 붕괴했다.
 
