@@ -23,16 +23,26 @@ BODY_LIMIT = 1200
 
 SKILL_REF = "작성 규격은 /git-issue 스킬."
 
-HEREDOC_OPEN = re.compile(r"<<(-?)(['\"]?)([A-Za-z_]\w*)\2")
+# `<<<`(here-string)는 heredoc이 아니다. 앞에 `<`가 더 있으면 여는 줄로 보지 않는다 —
+# 오인하면 뒤따르는 줄이 전부 본문으로 먹혀 그 줄의 gh 호출이 판정에서 빠진다.
+HEREDOC_OPEN = re.compile(r"(?<!<)<<(-?)(['\"]?)([A-Za-z_]\w*)\2")
 
 # gh가 명령 위치(줄 시작, `;` `&&` `||` `|` `(` `{` `$(` 백틱 뒤)에 올 때만 호출로 본다.
 # 부분일치로 판정하면 이 문자열을 언급만 하는 명령(커밋 메시지, grep, 문서 편집)이 걸린다.
-COMMAND_POSITION = r"(?:^|[\n;&|(){`]|\$\()[ \t]*(?:sudo[ \t]+)?gh[ \t]+"
+# 명령 앞에 붙는 실행 래퍼(`env FOO=1`, `time`, `sudo`)와 변수 할당은 건너뛴다.
+COMMAND_POSITION = (r"(?:^|[\n;&|(){`]|\$\()[ \t]*"
+                    r"(?:(?:sudo|env|command|nohup|time|timeout)[ \t]+)*"
+                    r"(?:\w+=\S*[ \t]+)*gh[ \t]+")
 
 BODY_FILE_FLAG = re.compile(r"(?:--body-file|(?:^|\s)-F)[=\s]\s*(\S+)")
 INLINE_BODY_FLAG = re.compile(
     r"(?:--body|(?:^|\s)-b)[= ](?:\"((?:[^\"\\]|\\.)*)\"|'([^']*)')", re.S)
 API_BODY_FIELD = re.compile(r"(?:-f|-F|--field|--raw-field)[= ]+[\"']?body=")
+# `--input`은 임의 JSON을 보내므로 본문이 들어 있어도 길이를 잴 수 없다.
+API_INPUT_FLAG = re.compile(r"(?:^|\s)--input[=\s]")
+# 코멘트 엔드포인트만 면제한다. 문자열 어디든 `comments`가 있으면 면제하면
+# `-f body="$(cat docs/comments.md)"` 같은 경로 이름으로 우회된다.
+API_COMMENTS_ENDPOINT = re.compile(r"issues/\d+/comments")
 # heredoc 여는 줄이 이슈 본문을 담는다는 신호
 BODY_HEREDOC_OPENER = re.compile(r"--body|-b[ =]|gh[ \t]+issue[ \t]+(?:create|edit)")
 
@@ -70,13 +80,13 @@ def split_heredocs(command):
     return "\n".join(exec_lines), [(o, "\n".join(b)) for o, b in heredocs]
 
 
-def detect_action(cmd_exec):
-    for action, pattern in (("create", r"issue[ \t]+create\b"),
-                            ("edit", r"issue[ \t]+edit\b"),
-                            ("api", r"api\b")):
-        if re.search(COMMAND_POSITION + pattern, cmd_exec):
-            return action
-    return None
+def detect_actions(cmd_exec):
+    """명령 하나에 여러 호출이 섞일 수 있으므로(`&&` 체인) 전부 모은다."""
+    return {action
+            for action, pattern in (("create", r"issue[ \t]+create\b"),
+                                    ("edit", r"issue[ \t]+edit\b"),
+                                    ("api", r"api\b"))
+            if re.search(COMMAND_POSITION + pattern, cmd_exec)}
 
 
 def check_length(body):
@@ -99,9 +109,9 @@ def check_api_bypass(cmd_exec):
 
     조회와 라벨 목적 호출은 body 필드가 없어 걸리지 않고, 코멘트는 길이 규격 대상이 아니다.
     """
-    if "comments" in cmd_exec or "issues" not in cmd_exec:
+    if API_COMMENTS_ENDPOINT.search(cmd_exec) or "issues" not in cmd_exec:
         return
-    if not API_BODY_FIELD.search(cmd_exec):
+    if not (API_BODY_FIELD.search(cmd_exec) or API_INPUT_FLAG.search(cmd_exec)):
         return
     raise Deny(
         f"`gh api`로 이슈 본문을 쓰면 본문 길이 규격({BODY_LIMIT}자)이 검사되지 않습니다.\n"
@@ -135,8 +145,8 @@ def check_bodies(cmd_exec, heredocs):
         if BODY_HEREDOC_OPENER.search(opener) or any(p in opener for p in body_files):
             check_length(body)
 
-    m = INLINE_BODY_FLAG.search(cmd_exec)
-    if m:
+    # body-file과 같은 이유로 전부 잰다 — 첫 하나만 재면 체인 뒤쪽 본문이 통과한다.
+    for m in INLINE_BODY_FLAG.finditer(cmd_exec):
         check_length(m.group(1) or m.group(2))
 
 
@@ -168,15 +178,17 @@ def judge(payload):
     """hook 출력 dict를 돌려준다. 낼 것이 없으면 None."""
     command = payload.get("tool_input", {}).get("command", "")
     cmd_exec, heredocs = split_heredocs(command)
-    action = detect_action(cmd_exec)
-    if action is None:
+    actions = detect_actions(cmd_exec)
+    if not actions:
         return None
 
     try:
-        if action == "api":
+        # 한 명령에 gh api와 gh issue가 함께 있어도 둘 다 검사한다 —
+        # 앞의 issue 호출만 보고 넘기면 뒤의 api 우회가 통과한다.
+        if "api" in actions:
             check_api_bypass(cmd_exec)
-            return None
-        check_bodies(cmd_exec, heredocs)
+        if actions & {"create", "edit"}:
+            check_bodies(cmd_exec, heredocs)
     except Deny as d:
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -184,7 +196,7 @@ def judge(payload):
             "permissionDecisionReason": d.reason,
         }}
 
-    if action != "create":
+    if "create" not in actions:
         return None
 
     transcript = payload.get("transcript_path", "")

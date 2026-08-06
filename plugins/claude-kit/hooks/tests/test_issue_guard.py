@@ -128,6 +128,23 @@ class BodyLengthOverLimit(GuardCase):
     def test_inline_body(self):
         self.assertEqual(self.verdict(f"gh issue create -b '{LONG}'"), "deny")
 
+    def test_chain_measures_every_inline_body(self):
+        """첫 하나만 재면 체인 뒤쪽의 긴 본문이 통과한다."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -b '{SHORT}' && gh issue create -b '{LONG}'"),
+            "deny")
+
+    def test_env_prefixed_invocation(self):
+        self.assertEqual(
+            self.verdict(f"env GH_TOKEN=x gh issue create --body-file {self.long_file}"),
+            "deny")
+
+    def test_here_string_does_not_swallow_next_line(self):
+        """`<<<`는 heredoc이 아니다. 여는 줄로 오인하면 다음 줄의 호출이 판정에서 빠진다."""
+        self.assertEqual(
+            self.verdict(f"grep foo <<<bar\ngh issue create --body-file {self.long_file}"),
+            "deny")
+
 
 class UnmeasurablePaths(GuardCase):
     """길이를 잴 수 없는 전달 경로는 막는다 — 재지 못하면 상한이 없는 것과 같다."""
@@ -140,6 +157,24 @@ class UnmeasurablePaths(GuardCase):
     def test_gh_api_with_body_field(self):
         self.assertEqual(
             self.verdict('gh api repos/o/r/issues -f title=T -f body="$(cat x.md)"'),
+            "deny")
+
+    def test_gh_api_after_issue_command_in_chain(self):
+        """앞의 issue 호출만 보고 넘기면 뒤의 api 우회가 통과한다."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.short_file} && "
+                         'gh api repos/o/r/issues -f body="$(cat x.md)"'),
+            "deny")
+
+    def test_gh_api_with_input_file(self):
+        """`--input`은 임의 JSON이라 본문이 들어 있어도 길이를 잴 수 없다."""
+        self.assertEqual(
+            self.verdict("gh api repos/o/r/issues --input payload.json"), "deny")
+
+    def test_comments_in_path_name_is_not_an_exemption(self):
+        """면제는 코멘트 엔드포인트에만. 경로 이름에 comments가 있다고 통과시키지 않는다."""
+        self.assertEqual(
+            self.verdict('gh api repos/o/r/issues -f body="$(cat docs/comments.md)"'),
             "deny")
 
 
@@ -227,17 +262,23 @@ class SplitHeredocs(unittest.TestCase):
         self.assertEqual([b for _, b in heredocs], ["하나", "둘"])
 
 
-class DetectAction(unittest.TestCase):
+class DetectActions(unittest.TestCase):
     def test_command_positions(self):
         for cmd in ("gh issue create -F x", "ls && gh issue create -F x",
                     "ls; gh issue create -F x", "$(gh issue create -F x)",
-                    "ls | gh issue create -F x", "ls\ngh issue create -F x"):
-            self.assertEqual(issue_guard.detect_action(cmd), "create", cmd)
+                    "ls | gh issue create -F x", "ls\ngh issue create -F x",
+                    "env GH_TOKEN=x gh issue create -F x"):
+            self.assertEqual(issue_guard.detect_actions(cmd), {"create"}, cmd)
+
+    def test_collects_every_invocation(self):
+        self.assertEqual(
+            issue_guard.detect_actions("gh issue create -F x && gh api repos/o/r/issues"),
+            {"create", "api"})
 
     def test_mentions_are_not_invocations(self):
         for cmd in ("echo 'gh issue create'", "- gh issue create 를 막는다",
                     "git commit -m 'fix gh api 우회'"):
-            self.assertIsNone(issue_guard.detect_action(cmd), cmd)
+            self.assertEqual(issue_guard.detect_actions(cmd), set(), cmd)
 
 
 if __name__ == "__main__":
