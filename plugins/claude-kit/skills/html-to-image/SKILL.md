@@ -1,8 +1,8 @@
 ---
 name: html-to-image
 description: HTML(파일·URL·문자열)을 카드뉴스·앱스토어·OG처럼 비율이 고정된 이미지(PNG/JPEG)로 캡처한다. 폰트·이미지 렌더 완료를 기다려 깨짐을 막고, 여러 장 batch 지원.
-argument-hint: [html-file-or-url] [preset]
-tools: Bash, Read
+argument-hint: "[<html-file>|<url>] [<preset>]"
+allowed-tools: Read, Bash(node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs *)
 ---
 
 # HTML to Image

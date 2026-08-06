@@ -1,7 +1,7 @@
 ---
 name: squash-merge
 description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단)·방금 머지한 PR 브랜치만 로컬 정리·base 동기화까지 한 흐름. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인.
-argument-hint: <pr-number-optional>
+argument-hint: "[--auto] [<pr#>|<branch>|<url>]"
 allowed-tools: Bash(gh:*), Bash(git:*)
 ---
 
@@ -9,7 +9,12 @@ allowed-tools: Bash(gh:*), Bash(git:*)
 
 ## Context
 - 현재 브랜치: !`git branch --show-current`
-- PR 번호 인자: `$1` (생략 시 현재 branch 연결 PR auto detect)
+- 인자: `$ARGUMENTS` — `[--auto] [<pr#>|<branch>|<url>]`
+
+## 인자
+
+- **타겟** (`--auto`를 제외한 첫 인자): PR 번호, 브랜치 이름, PR URL 중 하나. `gh pr view <타겟>`에 그대로 전달. 생략 시 현재 브랜치 연결 PR auto detect.
+- **`--auto`**: Step 3의 사용자 확인 게이트 생략. 나머지 단계는 동일하게 실행.
 
 ## Task
 
@@ -17,7 +22,7 @@ PR squash merge → 메시지 정리 → 로컬 정리 한 흐름으로 실행.
 
 ### Step 1. PR 식별 + 분석
 
-PR 번호 인자(`$1`) 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료.
+타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
 
 PR 정보 + 변경 사항:
 - `gh pr view <NUM> --json number,headRefName,baseRefName,title,commits,files,state,mergeable,mergeStateStatus`
@@ -54,6 +59,8 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - **subject/body는 본문 텍스트로.** AskUserQuestion `preview` 필드에만 담지 말 것 — preview는 터미널 전용이라 데스크탑·모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
 - confirm 수단은 자유(AskUserQuestion·평문). 내용이 본문에 있으면 매체 무관 표시 — `preview`는 중복일 뿐 유일 표시처 X.
 - "머지하자" 류 자연어 진입도 raw git/gh 직접 처리 X — 본 흐름(Step 2 포함) 경유.
+
+**`--auto` 지정 시**: ②의 confirm만 생략하고 Step 4로 직행. ①(PR 정보 + subject/body 출력)은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. Step 1의 머지 가능 사전 점검은 `--auto`에서도 동일 적용 — 충돌, 필수 체크 미통과, 초안, base 뒤처짐은 사용자 확인이 아니라 머지 안전성 문제라 옵션으로 우회하지 않는다.
 
 ### Step 4. squash merge 실행
 

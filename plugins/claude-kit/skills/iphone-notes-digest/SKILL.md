@@ -1,8 +1,19 @@
 ---
 name: iphone-notes-digest
 description: 맥/아이폰 메모앱(Apple Notes)에 쌓인 메모를 추출하고, 메모 안의 링크·미디어를 실제로 열어 해석한 뒤(웹페이지 메타·유튜브/인스타/Threads 캡션, 음성으로만 설명하는 영상은 자막·STT까지), 메모별 섹션으로 정리한 한 장의 다이제스트(사실) 문서로 보고한다. "메모 정리하자", "메모앱 비우고 싶어", "아이폰 메모 추출해서 정리", "쌓인 메모 훑어줘", "Notes 정리", "메모에 인스타 릴스/링크 잔뜩 있는데 뭐였는지 모르겠어" 같은 요청에 사용한다. 메모를 단순히 옮겨적는 게 아니라, 링크 뒤의 내용까지 확인해 "이게 뭐였는지"를 다시 안 열어봐도 아는 사실로 만드는 것이 목적이다 — 살릴지/버릴지 판단(흡수·삭제·자산화)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템)가 정한다. 메모에 URL·유튜브·인스타 릴스·Threads 링크가 섞여 있을 때 특히 가치가 크다.
-argument-hint: [folder-name]
-tools: Bash, WebFetch, Read, Write, Edit
+argument-hint: "[<folder-name>]"
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - WebFetch
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/list_folders.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/collect.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_notes.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/enrich_video.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_frames.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_carousel.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_scans.sh *)
 ---
 
 # iPhone Notes Digest

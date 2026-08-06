@@ -1,8 +1,8 @@
 ---
 name: reflect
 description: 지침(스킬·CLAUDE.md·메모리)이 분명히 있는데 어긋난 동작을 사용자가 지적할 때, 변명 없이 증거로 근본원인을 확정하고 개선안을 원인별 목적지(지침 수정·문서 리라이트·메모리 정리·hook 승격·gh issue)로 라우팅하는 반성문 도구. "지침 어겼잖아", "왜 멋대로 했어", "이거 지침과 다르게 왜 이렇게 했어", "반성문 써봐", `/reflect` 발화에 반응. 진단은 평가형("이 산출물이 이 조항을 지켰나")으로 하고, 증거를 못 대는 "깜빡했다"류는 근본원인으로 인정하지 않는다. 취향 차이·단순 재작업·완료 전 예방 검증·메모리 정리 요청은 대상 아님(reflect는 위반 진단→개선 라우팅 전용).
-argument-hint: [지적 내용]
-tools: Read, Grep, Glob, Bash, Edit, Write, Agent
+argument-hint: "[지적 내용]"
+allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(gh issue:*), Bash(git:*)
 ---
 
 # reflect

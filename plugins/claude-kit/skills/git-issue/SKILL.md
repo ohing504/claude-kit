@@ -2,6 +2,7 @@
 name: git-issue
 description: GitHub 이슈를 만들거나 고칠 때 제목, 본문, 라벨 규격을 적용. "이슈 만들어줘", "이슈로 남겨", "이슈 정리" 발화에. 제목은 증상 서술문(완료 시 거짓이 되면 닫는다), 본문은 4블록 상한, 시점 실측과 미결과 진행 상황은 넣지 않는다. 이번 세션에서 끝낼 일은 이슈로 만들지 않는다.
 allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(git:*), Read, Grep, Glob, Write
+argument-hint: "[<issue#>] [만들거나 고칠 내용]"
 ---
 
 # Git Issue
@@ -9,6 +10,7 @@ allowed-tools: Bash(gh issue:*), Bash(gh search:*), Bash(git:*), Read, Grep, Glo
 ## Context
 - 열린 이슈: !`gh issue list --state open --limit 30 --json number,title,labels --jq '.[] | "#\(.number) \(.title) [\(.labels | map(.name) | join(","))]"' 2>/dev/null || echo "(조회 실패 — 이슈 미사용 저장소일 수 있음)"`
 - 현재 브랜치: !`git branch --show-current`
+- 인자: `$ARGUMENTS` — `#N` 또는 숫자가 있으면 그 이슈를 고치는 대상으로 삼고, 나머지 텍스트는 만들거나 고칠 내용으로 읽는다. 인자가 없으면 대화 맥락에서 받는다.
 
 ## Iron Law — 만들지 않을 것을 먼저 판정
 

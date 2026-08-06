@@ -1,8 +1,8 @@
 ---
 name: prompt-forge
 description: 대충 던진 요청을 반응형 인터뷰로 파고들어 진짜 의도를 뽑아낸 뒤, 다른 실행(ultracode 견고 작업·Fable 원샷·loop 시드·일반 에이전트)에 붙여넣을 의도 명세(intent spec, 프롬프트 형식)로 만드는 메타프롬프팅 도구 — 문구를 다듬는 게 아니라 무엇을 시킬지의 의도·맥락을 정밀화한다. 요청이 짧거나 모호할수록, 되물을 수 없는 원샷·반복 실행일수록 값이 크다. "이거 시킬 프롬프트 짜줘", "목적 물어보고 최종 프롬프트로 만들어줘", "loop 돌릴 goal 명세 만들어줘" 같은 요청에 쓴다. 이미 있는 문서 다듬기(ai-doc-improver)와 달리 의도에서 새로 만든다.
-argument-hint: [대충 시키고 싶은 것]
-tools: Read, Write, Glob, AskUserQuestion
+argument-hint: "[대충 시키고 싶은 것]"
+allowed-tools: Read, Write, Glob, AskUserQuestion
 ---
 
 # prompt-forge
