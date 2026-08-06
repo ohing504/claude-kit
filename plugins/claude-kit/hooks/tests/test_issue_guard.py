@@ -134,6 +134,12 @@ class BodyLengthOverLimit(GuardCase):
             self.verdict(f"env GH_TOKEN=x gh issue create --body-file {self.long_file}"),
             "deny")
 
+    def test_two_heredocs_on_one_line(self):
+        """첫 하나만 추적하면 뒤에 열린 본문이 실행부에 남아 길이를 재지 못한다."""
+        cmd = ("gh issue create --title \"$(cat <<'A')\" --body \"$(cat <<'B')\"\n"
+               "짧은 제목\nA\n" + LONG + "\nB")
+        self.assertEqual(self.verdict(cmd), "deny")
+
     def test_here_string_does_not_swallow_next_line(self):
         """`<<<`는 heredoc이 아니다. 여는 줄로 오인하면 다음 줄의 호출이 판정에서 빠진다."""
         self.assertEqual(

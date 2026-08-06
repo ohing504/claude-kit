@@ -71,22 +71,30 @@ def split_heredocs(command):
     부분이 아니므로 판정에서 뺀다 — 이 hook을 설명하는 커밋 메시지가 자기 자신에게
     차단되는 일이 실제로 있었다. 플래그는 항상 본문 밖에 있으므로 본문 추출도
     실행되는 부분으로 한다.
+
+    한 줄에 여러 개가 열릴 수 있다(`cmd <<A <<B`). 첫 하나만 추적하면 나머지 본문이
+    실행부에 남아 길이를 재지 못한다. 여는 순서대로 대기열에 넣고 차례로 닫는다.
     """
-    exec_lines, heredocs = [], []
-    tag = indented = None
+    exec_lines, heredocs, pending = [], [], []
+    current, body = None, None
     for line in command.split("\n"):
-        if tag is not None:
+        if current is not None:
+            tag, indented, opener = current
             if (line.lstrip("\t ") if indented else line) == tag:
-                tag = None
+                heredocs.append((opener, "\n".join(body)))
+                current, body = (pending.pop(0), []) if pending else (None, None)
                 continue
-            heredocs[-1][1].append(line)
+            body.append(line)
             continue
         exec_lines.append(line)
-        m = HEREDOC_OPEN.search(line)
-        if m:
-            indented, tag = m.group(1) == "-", m.group(3)
-            heredocs.append((line, []))
-    return "\n".join(exec_lines), [(o, "\n".join(b)) for o, b in heredocs]
+        opened = [(m.group(3), m.group(1) == "-", line)
+                  for m in HEREDOC_OPEN.finditer(line)]
+        if opened:
+            pending.extend(opened)
+            current, body = pending.pop(0), []
+    if current is not None:  # 닫히지 않은 채 끝났다
+        heredocs.append((current[2], "\n".join(body)))
+    return "\n".join(exec_lines), heredocs
 
 
 def detect_actions(cmd_exec):
