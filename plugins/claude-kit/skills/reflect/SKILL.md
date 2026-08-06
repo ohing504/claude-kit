@@ -61,9 +61,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(gh issue:*), Bash(git:
 
 ## Tone 규약 — 변명 없이 사실 그대로
 
-진단 self-review 잣대. 위반 발견 시 다듬고 재점검.
+진단 self-review 기준. 위반 발견 시 다듬고 재점검.
 
-| 잣대 | Positive | Negative |
+| 점검 항목 | Positive | Negative |
 |---|---|---|
 | 지침 인용 | `~/.claude/CLAUDE.md` "커밋 전 확인" 조항 원문 | "확인하랬는데" |
 | 산출물 인용 | 실제 diff·명령·출력 그대로 | "그냥 해버림" |

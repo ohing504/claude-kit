@@ -58,7 +58,7 @@ also-absorbed-from: Claude Code 스킬 문서 code.claude.com/docs/en/skills (�
 - **`` !`명령` ``으로 주입하는 컨텍스트가 `allowed-tools`에 없음** — body 상단 Context 블록의 명령은 스킬 로드 시 먼저 실행되므로, 대응 규칙이 없으면 매 실행마다 권한 프롬프트가 뜬다.
 - **파일명·경로 위생** — 번들 파일명이 제네릭 패턴(`docN`·`fileN`·`untitled`·`temp`)이라 내용을 안 드러내거나, body 경로에 역슬래시 구분자(`scripts\helper.py`)가 있으면 플래그. 파일명은 내용 기반 서술형(`form_validation_rules.md`), 경로는 항상 forward slash.
 
-## SKILL.md 전용 잣대
+## SKILL.md 전용 기준
 
 범용 점검의 "본문이 비대 → references/ 외부화" 규칙에 **예외**와 **보완**이 있다:
 
