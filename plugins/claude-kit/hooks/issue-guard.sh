@@ -19,11 +19,44 @@ input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
 
 case "$cmd" in
-  *"gh issue create"*) action=create ;;
-  *"gh issue edit"*)   action=edit ;;
-  *"gh api"*)          action=api ;;
+  *"gh issue create"*|*"gh issue edit"*|*"gh api"*) ;;
   *) exit 0 ;;
 esac
+
+# ── 실행되는 부분만 남긴다 ───────────────────────────────────────────────────
+# 명령 문자열에는 실행되는 명령과 데이터가 섞여 있다. heredoc 본문은 실행되는
+# 부분이 아니므로 판정에서 뺀다 — 이 hook을 설명하는 커밋 메시지가 자기 자신에게
+# 차단되는 일이 실제로 있었다. 플래그는 항상 본문 밖에 있으므로 아래 본문 추출도
+# 이 문자열로 한다. 단 heredoc 본문 자체의 길이는 원본 $cmd에서 따로 잰다.
+cmd_exec=$(printf '%s' "$cmd" | awk '
+  skip {
+    line = $0
+    if (indented) sub(/^[ \t]+/, "", line)
+    if (line == tag) skip = 0
+    next
+  }
+  { print }
+  match($0, /<<-?\047?"?[A-Za-z_][A-Za-z_0-9]*"?\047?/) {
+    raw = substr($0, RSTART, RLENGTH)
+    indented = (index(raw, "<<-") == 1)
+    tag = raw
+    gsub(/[<>\-\047"]/, "", tag)
+    skip = 1
+  }
+')
+
+# gh가 명령 위치(줄 시작, `;` `&&` `||` `|` `(` `{` `$(` 백틱 뒤)에 올 때만 호출로 본다.
+# 부분일치로 판정하면 이 문자열을 언급만 하는 명령(커밋 메시지, grep, 문서 편집)이 걸린다.
+gh_invokes() {
+  printf '%s' "$cmd_exec" \
+    | SUB="$1" perl -0777 -ne 'exit(1) unless /(?:^|[\n;&|(){`]|\$\()[ \t]*(?:sudo[ \t]+)?gh[ \t]+$ENV{SUB}\b/s'
+}
+
+if   gh_invokes 'issue[ \t]+create'; then action=create
+elif gh_invokes 'issue[ \t]+edit';   then action=edit
+elif gh_invokes 'api';               then action=api
+else exit 0
+fi
 
 deny() {
   jq -nc --arg r "$1" '{
@@ -40,12 +73,12 @@ deny() {
 # gh issue를 거치지 않고 본문을 쓰는 경로. 길이를 재는 대신 경로 자체를 막는다.
 # 조회와 라벨 목적 호출은 body 필드가 없어 걸리지 않고, 코멘트는 길이 규격 대상이 아니다.
 if [ "$action" = api ]; then
-  case "$cmd" in
+  case "$cmd_exec" in
     *comments*) exit 0 ;;
     *issues*) ;;
     *) exit 0 ;;
   esac
-  printf '%s' "$cmd" \
+  printf '%s' "$cmd_exec" \
     | grep -qE -- '(-f|-F|--field|--raw-field)[= ]+["'"'"']?body=' \
     || exit 0
   deny "\`gh api\`로 이슈 본문을 쓰면 본문 길이 규격(${BODY_LIMIT}자)이 검사되지 않습니다.
@@ -87,7 +120,7 @@ check_len() {
 # ── 본문 길이: --body-file / -F ──────────────────────────────────────────────
 # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
 # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
-body_files=$(printf '%s' "$cmd" \
+body_files=$(printf '%s' "$cmd_exec" \
   | grep -oE -- '(--body-file|(^|[[:space:]])-F)[=[:space:]][[:space:]]*[^[:space:]]+' \
   | sed -E 's/^.*(--body-file|-F)[=[:space:]][[:space:]]*//' || true)
 
@@ -138,7 +171,7 @@ check_len "$(printf '%s' "$cmd" | awk -v want="$body_file" '
 ')"
 
 # ── 본문 길이: 인라인 --body "..." / --body '...' ────────────────────────────
-check_len "$(printf '%s' "$cmd" | perl -0777 -ne 'print(($1 // $2)) if /(?:--body|(?:^|\s)-b)[= ](?:"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27)/s' 2>/dev/null || true)"
+check_len "$(printf '%s' "$cmd_exec" | perl -0777 -ne 'print(($1 // $2)) if /(?:--body|(?:^|\s)-b)[= ](?:"((?:[^"\\]|\\.)*)"|\x27([^\x27]*)\x27)/s' 2>/dev/null || true)"
 
 # ── 사용자가 요청했는가 (create만, 경고만) ───────────────────────────────────
 [ "$action" = create ] || exit 0
