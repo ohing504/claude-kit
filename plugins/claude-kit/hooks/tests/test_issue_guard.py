@@ -199,5 +199,46 @@ class UnrequestedCreateWarning(GuardCase):
         self.assertIsNone(self.system_message(f"gh issue edit 12 -F {self.short_file}", t))
 
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import issue_guard  # noqa: E402
+
+
+class SplitHeredocs(unittest.TestCase):
+    """판정의 전제. 여기가 어긋나면 위 판정이 전부 어긋난다."""
+
+    def test_body_is_removed_from_executed_part(self):
+        cmd = "cat <<'EOF'\n본문\nEOF\necho done"
+        cmd_exec, heredocs = issue_guard.split_heredocs(cmd)
+        self.assertEqual(cmd_exec, "cat <<'EOF'\necho done")
+        self.assertEqual(heredocs, [("cat <<'EOF'", "본문")])
+
+    def test_closing_tag_is_read_from_opening_line(self):
+        """EOF 외 라벨도 그 라벨로 닫는다."""
+        _, heredocs = issue_guard.split_heredocs("cat <<MSGEOF\nEOF\n본문\nMSGEOF")
+        self.assertEqual(heredocs, [("cat <<MSGEOF", "EOF\n본문")])
+
+    def test_indented_form(self):
+        _, heredocs = issue_guard.split_heredocs("cat <<-'EOF'\n\t본문\n\tEOF")
+        self.assertEqual(heredocs, [("cat <<-'EOF'", "\t본문")])
+
+    def test_multiple_heredocs(self):
+        cmd = "cat <<'A'\n하나\nA\ncat <<'B'\n둘\nB"
+        _, heredocs = issue_guard.split_heredocs(cmd)
+        self.assertEqual([b for _, b in heredocs], ["하나", "둘"])
+
+
+class DetectAction(unittest.TestCase):
+    def test_command_positions(self):
+        for cmd in ("gh issue create -F x", "ls && gh issue create -F x",
+                    "ls; gh issue create -F x", "$(gh issue create -F x)",
+                    "ls | gh issue create -F x", "ls\ngh issue create -F x"):
+            self.assertEqual(issue_guard.detect_action(cmd), "create", cmd)
+
+    def test_mentions_are_not_invocations(self):
+        for cmd in ("echo 'gh issue create'", "- gh issue create 를 막는다",
+                    "git commit -m 'fix gh api 우회'"):
+            self.assertIsNone(issue_guard.detect_action(cmd), cmd)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2, argv=[sys.argv[0]] + sys.argv[1:])

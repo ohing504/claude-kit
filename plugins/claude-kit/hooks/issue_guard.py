@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""gh issue create / edit 가드의 판정부.
+
+산문 규약은 이슈 생성을 못 막는다는 실측이 근거다 — 한 저장소에서 생성 139건 중
+72%가 사용자 요청 없이 만들어졌고, 사용자가 "이슈 계속 새로 만들지 말라"고 쓴
+바로 그 메시지에서도 생성됐다. 같은 저장소가 만든 이슈의 29%를 나중에 삭제했다.
+
+두 축으로 나눈다:
+  길이 초과      → deny.  기계 판정이라 오탐이 없다. create와 edit 둘 다 잰다 —
+                          create만 재면 edit --body-file로 상한을 우회한다.
+  사용자 미요청  → 경고.  판정이 부정확해 차단하면 정당한 생성까지 막힌다.
+                          create에만. edit은 기존 이슈 정리라 요청 발화가 없는 게 정상이다.
+
+호출은 issue-guard.sh가 한다. 그쪽은 대상 문자열 유무만 보고 여기로 넘긴다.
+"""
+import json
+import re
+import sys
+
+# 4블록(무엇을/완료 조건/시작 지점/하지 말 것)이면 충분한 상한.
+# 붕괴한 저장소 본문 중앙값 1,957자, 정상 운영 저장소 880~1,061자.
+BODY_LIMIT = 1200
+
+SKILL_REF = "작성 규격은 /git-issue 스킬."
+
+HEREDOC_OPEN = re.compile(r"<<(-?)(['\"]?)([A-Za-z_]\w*)\2")
+
+# gh가 명령 위치(줄 시작, `;` `&&` `||` `|` `(` `{` `$(` 백틱 뒤)에 올 때만 호출로 본다.
+# 부분일치로 판정하면 이 문자열을 언급만 하는 명령(커밋 메시지, grep, 문서 편집)이 걸린다.
+COMMAND_POSITION = r"(?:^|[\n;&|(){`]|\$\()[ \t]*(?:sudo[ \t]+)?gh[ \t]+"
+
+BODY_FILE_FLAG = re.compile(r"(?:--body-file|(?:^|\s)-F)[=\s]\s*(\S+)")
+INLINE_BODY_FLAG = re.compile(
+    r"(?:--body|(?:^|\s)-b)[= ](?:\"((?:[^\"\\]|\\.)*)\"|'([^']*)')", re.S)
+API_BODY_FIELD = re.compile(r"(?:-f|-F|--field|--raw-field)[= ]+[\"']?body=")
+# heredoc 여는 줄이 이슈 본문을 담는다는 신호
+BODY_HEREDOC_OPENER = re.compile(r"--body|-b[ =]|gh[ \t]+issue[ \t]+(?:create|edit)")
+
+ISSUE_REQUESTED = re.compile(r"이슈|issue|남겨|등록해|백로그|backlog", re.I)
+
+
+class Deny(Exception):
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def split_heredocs(command):
+    """명령을 (실행되는 부분, [(여는 줄, 본문), ...])으로 나눈다.
+
+    명령 문자열에는 실행되는 명령과 데이터가 섞여 있다. heredoc 본문은 실행되는
+    부분이 아니므로 판정에서 뺀다 — 이 hook을 설명하는 커밋 메시지가 자기 자신에게
+    차단되는 일이 실제로 있었다. 플래그는 항상 본문 밖에 있으므로 본문 추출도
+    실행되는 부분으로 한다.
+    """
+    exec_lines, heredocs = [], []
+    tag = indented = None
+    for line in command.split("\n"):
+        if tag is not None:
+            if (line.lstrip("\t ") if indented else line) == tag:
+                tag = None
+                continue
+            heredocs[-1][1].append(line)
+            continue
+        exec_lines.append(line)
+        m = HEREDOC_OPEN.search(line)
+        if m:
+            indented, tag = m.group(1) == "-", m.group(3)
+            heredocs.append((line, []))
+    return "\n".join(exec_lines), [(o, "\n".join(b)) for o, b in heredocs]
+
+
+def detect_action(cmd_exec):
+    for action, pattern in (("create", r"issue[ \t]+create\b"),
+                            ("edit", r"issue[ \t]+edit\b"),
+                            ("api", r"api\b")):
+        if re.search(COMMAND_POSITION + pattern, cmd_exec):
+            return action
+    return None
+
+
+def check_length(body):
+    if not body or len(body) <= BODY_LIMIT:
+        return
+    raise Deny(
+        f"이슈 본문이 {len(body)}자로 상한 {BODY_LIMIT}자를 넘습니다. 본문이 길수록 "
+        "낡을 면적이 커지고 머지율이 떨어집니다(길이를 줄이면 단위당 +9%).\n"
+        "\n"
+        "넘친 내용은 대개 이 넷 중 하나입니다 — 다음 자리로 보내세요.\n"
+        "  시점 실측(N줄, N토큰, permalink) → 재실행 명령(`wc -l <path>`)으로 대체\n"
+        "  미결과 결정                     → ADR. 완료 조건 첫 칸을 '결정하고 ADR에 남긴다'로\n"
+        "  환경과 아키텍처 배경             → CLAUDE.md 또는 AGENTS.md\n"
+        "  진행 상황                       → 적지 않음. 상태는 라벨에서 읽습니다\n"
+        "\n" + SKILL_REF)
+
+
+def check_api_bypass(cmd_exec):
+    """gh issue를 거치지 않고 본문을 쓰는 경로. 길이를 재는 대신 경로 자체를 막는다.
+
+    조회와 라벨 목적 호출은 body 필드가 없어 걸리지 않고, 코멘트는 길이 규격 대상이 아니다.
+    """
+    if "comments" in cmd_exec or "issues" not in cmd_exec:
+        return
+    if not API_BODY_FIELD.search(cmd_exec):
+        return
+    raise Deny(
+        f"`gh api`로 이슈 본문을 쓰면 본문 길이 규격({BODY_LIMIT}자)이 검사되지 않습니다.\n"
+        "\n"
+        "`gh issue create --body-file <path>` 또는 `gh issue edit <N> --body-file <path>`로 쓰세요.\n"
+        "\n" + SKILL_REF)
+
+
+def check_bodies(cmd_exec, heredocs):
+    # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
+    # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
+    body_files = [m.group(1).strip("\"'") for m in BODY_FILE_FLAG.finditer(cmd_exec)]
+    for path in body_files:
+        if path == "-":
+            # 표준입력으로 넘긴 본문은 hook이 읽을 수 없어 길이를 잴 방법이 없다.
+            raise Deny(
+                f"본문을 표준입력(`--body-file -`)으로 넘기면 길이 규격({BODY_LIMIT}자)을 "
+                "검사할 수 없습니다.\n"
+                "\n"
+                "본문을 파일로 쓰고 `--body-file <path>`로 넘기세요.\n"
+                "\n" + SKILL_REF)
+        try:
+            with open(path, encoding="utf-8") as f:
+                check_length(f.read())
+        except OSError:
+            pass  # 아직 없는 경로는 잴 것이 없다
+
+    # 이슈 본문과 무관한 heredoc(다른 파일 작성 등)을 재지 않도록, 여는 줄이 본문
+    # 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 잰다.
+    for opener, body in heredocs:
+        if BODY_HEREDOC_OPENER.search(opener) or any(p in opener for p in body_files):
+            check_length(body)
+
+    m = INLINE_BODY_FLAG.search(cmd_exec)
+    if m:
+        check_length(m.group(1) or m.group(2))
+
+
+def last_user_message(transcript_path):
+    """마지막 실제 사용자 발화.
+
+    content가 문자열인 것만 — 배열은 tool_result다. isMeta는 슬래시 커맨드 caveat나
+    훅 주입 컨텍스트라 실제 발화가 아니다.
+    """
+    last = None
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    continue
+                if event.get("type") != "user" or event.get("isMeta"):
+                    continue
+                content = event.get("message", {}).get("content")
+                if isinstance(content, str):
+                    last = content
+    except OSError:
+        return None
+    return last
+
+
+def judge(payload):
+    """hook 출력 dict를 돌려준다. 낼 것이 없으면 None."""
+    command = payload.get("tool_input", {}).get("command", "")
+    cmd_exec, heredocs = split_heredocs(command)
+    action = detect_action(cmd_exec)
+    if action is None:
+        return None
+
+    try:
+        if action == "api":
+            check_api_bypass(cmd_exec)
+            return None
+        check_bodies(cmd_exec, heredocs)
+    except Deny as d:
+        return {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": d.reason,
+        }}
+
+    if action != "create":
+        return None
+
+    transcript = payload.get("transcript_path", "")
+    if not transcript:
+        return None
+    last = last_user_message(transcript)
+    if not last or ISSUE_REQUESTED.search(last):
+        return None
+    return {
+        "systemMessage": "직전 발화에 이슈 요청이 없습니다. 지금 세션에서 끝낼 일이면 "
+                         "커밋 메시지가 기록이고, 이슈는 다음 세션에 넘길 것만 만듭니다.",
+        "hookSpecificOutput": {"hookEventName": "PreToolUse"},
+    }
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    result = judge(payload)
+    if result is not None:
+        print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
