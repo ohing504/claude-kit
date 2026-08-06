@@ -34,32 +34,27 @@ class GuardCase(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def verdict(self, command, transcript=None):
-        """hook을 실행해 'deny' 또는 'allow'를 돌려준다."""
+    def run_hook(self, command, transcript=None, cwd=None):
         payload = {"tool_input": {"command": command}}
         if transcript:
             payload["transcript_path"] = transcript
+        if cwd:
+            payload["cwd"] = cwd
         proc = subprocess.run(
             ["bash", HOOK],
             input=json.dumps(payload),
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(proc.returncode, 0, f"hook 비정상 종료: {proc.stderr}")
-        if not proc.stdout.strip():
-            return "allow"
-        out = json.loads(proc.stdout)
+        return json.loads(proc.stdout) if proc.stdout.strip() else {}
+
+    def verdict(self, command, transcript=None, cwd=None):
+        """hook을 실행해 'deny' 또는 'allow'를 돌려준다."""
+        out = self.run_hook(command, transcript, cwd)
         return out.get("hookSpecificOutput", {}).get("permissionDecision", "allow")
 
-    def system_message(self, command, transcript):
-        proc = subprocess.run(
-            ["bash", HOOK],
-            input=json.dumps({"tool_input": {"command": command},
-                              "transcript_path": transcript}),
-            capture_output=True, text=True, check=False,
-        )
-        if not proc.stdout.strip():
-            return None
-        return json.loads(proc.stdout).get("systemMessage")
+    def system_message(self, command, transcript=None, cwd=None):
+        return self.run_hook(command, transcript, cwd).get("systemMessage")
 
     def write_transcript(self, *user_messages):
         path = os.path.join(self.tmp.name, "transcript.jsonl")
@@ -176,6 +171,50 @@ class UnmeasurablePaths(GuardCase):
         self.assertEqual(
             self.verdict('gh api repos/o/r/issues -f body="$(cat docs/comments.md)"'),
             "deny")
+
+
+class BodyFilePathResolution(GuardCase):
+    """본문 파일 경로가 절대경로로만 오지 않는다. 실측상 35%가 상대경로거나 셸 변수다."""
+
+    def test_relative_path_resolved_against_cwd(self):
+        self.assertEqual(self.verdict("gh issue create -F long.md", cwd=self.tmp.name),
+                         "deny")
+
+    def test_variable_assigned_in_same_command(self):
+        """실측상 셸 변수 213건 중 206건이 같은 명령 안에서 할당된다."""
+        self.assertEqual(
+            self.verdict(f"SP={self.tmp.name} && gh issue create -F $SP/long.md"),
+            "deny")
+
+    def test_braced_variable(self):
+        self.assertEqual(
+            self.verdict(f"SP={self.tmp.name}\ngh issue create -F ${{SP}}/long.md"),
+            "deny")
+
+    def test_unresolvable_path_warns_but_allows(self):
+        """차단하면 정상 흐름을 막는다. 잴 수 없었다는 사실만 보이게 한다."""
+        cmd = "gh issue create -F $UNKNOWN_DIR/body.md"
+        self.assertEqual(self.verdict(cmd), "allow")
+        self.assertIn("길이를 검사하지 못했습니다", self.system_message(cmd) or "")
+
+    def test_unreachable_path_warns(self):
+        cmd = "cd sub && gh issue create -F body.md"
+        self.assertEqual(self.verdict(cmd, cwd=self.tmp.name), "allow")
+        self.assertIn("길이를 검사하지 못했습니다", self.system_message(cmd, cwd=self.tmp.name) or "")
+
+    def test_file_written_by_same_command_does_not_warn(self):
+        """hook은 실행 전에 돈다. 같은 명령이 만들 파일은 아직 없는 게 정상이고,
+        그 본문은 heredoc 경로로 이미 잰다."""
+        cmd = (f"cat > body.md <<'EOF'\n{SHORT}\nEOF\ngh issue create -F body.md")
+        self.assertEqual(self.verdict(cmd, cwd=self.tmp.name), "allow")
+        self.assertIsNone(self.system_message(cmd, cwd=self.tmp.name))
+
+    def test_unrelated_F_flag_is_not_a_body_file(self):
+        """`curl -F`는 본문 파일이 아니다. gh 호출 구간 밖의 플래그는 읽지 않는다."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.short_file} && "
+                         f"curl -F file=@{self.long_file} https://example.com"),
+            "allow")
 
 
 class AllowedInvocations(GuardCase):

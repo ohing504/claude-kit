@@ -14,6 +14,7 @@
 호출은 issue-guard.sh가 한다. 그쪽은 대상 문자열 유무만 보고 여기로 넘긴다.
 """
 import json
+import os
 import re
 import sys
 
@@ -43,6 +44,14 @@ API_INPUT_FLAG = re.compile(r"(?:^|\s)--input[=\s]")
 # 코멘트 엔드포인트만 면제한다. 문자열 어디든 `comments`가 있으면 면제하면
 # `-f body="$(cat docs/comments.md)"` 같은 경로 이름으로 우회된다.
 API_COMMENTS_ENDPOINT = re.compile(r"issues/\d+/comments")
+# gh 호출 하나가 끝나는 지점. 본문 파일 플래그는 이 구간 안에서만 찾는다 —
+# 명령 전체에서 찾으면 체인에 섞인 `curl -F`의 값을 본문 경로로 읽는다.
+SEGMENT_END = re.compile(r";|&&|\|\||\n|\|(?!\|)")
+GH_INVOCATION = re.compile(COMMAND_POSITION + r"(?:issue[ \t]+(?:create|edit)|api)\b")
+# 명령 앞머리의 `NAME=value`. 실측상 본문 경로에 쓰인 셸 변수 213건 중 206건이
+# 같은 명령 안에서 이렇게 할당된다.
+ASSIGNMENT = re.compile(r"(?:^|[\n;&|(])[ \t]*(\w+)=(\"[^\"]*\"|'[^']*'|[^\s;&|]*)")
+VAR_REFERENCE = re.compile(r"\$\{(\w+)\}|\$(\w+)")
 # heredoc 여는 줄이 이슈 본문을 담는다는 신호
 BODY_HEREDOC_OPENER = re.compile(r"--body|-b[ =]|gh[ \t]+issue[ \t]+(?:create|edit)")
 
@@ -89,6 +98,39 @@ def detect_actions(cmd_exec):
             if re.search(COMMAND_POSITION + pattern, cmd_exec)}
 
 
+def gh_segments(cmd_exec):
+    """gh 호출마다 그 호출이 끝나는 지점까지의 구간을 돌려준다."""
+    segments = []
+    for m in GH_INVOCATION.finditer(cmd_exec):
+        rest = cmd_exec[m.end():]
+        end = SEGMENT_END.search(rest)
+        segments.append(rest[:end.start()] if end else rest)
+    return segments
+
+
+def expand_vars(text, env):
+    """아는 변수만 치환한다. 모르는 것은 그대로 둬서 해석 실패로 드러나게 한다."""
+    return VAR_REFERENCE.sub(
+        lambda m: env.get(m.group(1) or m.group(2), m.group(0)), text)
+
+
+def shell_assignments(cmd_exec):
+    env = {}
+    for m in ASSIGNMENT.finditer(cmd_exec):
+        env[m.group(1)] = expand_vars(m.group(2).strip("\"'"), env)
+    return env
+
+
+def resolve_path(raw, cwd, env):
+    """본문 파일 경로를 실제로 열 수 있는 형태로 바꾼다. 못 하면 None."""
+    path = os.path.expanduser(expand_vars(raw, env))
+    if "$" in path:
+        return None
+    if os.path.isabs(path):
+        return path
+    return os.path.join(cwd, path) if cwd else None
+
+
 def check_length(body):
     if not body or len(body) <= BODY_LIMIT:
         return
@@ -120,12 +162,15 @@ def check_api_bypass(cmd_exec):
         "\n" + SKILL_REF)
 
 
-def check_bodies(cmd_exec, heredocs):
+def check_bodies(cmd_exec, heredocs, cwd, warnings):
     # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
     # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
-    body_files = [m.group(1).strip("\"'") for m in BODY_FILE_FLAG.finditer(cmd_exec)]
-    for path in body_files:
-        if path == "-":
+    body_files = [m.group(1).strip("\"'")
+                  for segment in gh_segments(cmd_exec)
+                  for m in BODY_FILE_FLAG.finditer(segment)]
+    env = shell_assignments(cmd_exec)
+    for raw in body_files:
+        if raw == "-":
             # 표준입력으로 넘긴 본문은 hook이 읽을 수 없어 길이를 잴 방법이 없다.
             raise Deny(
                 f"본문을 표준입력(`--body-file -`)으로 넘기면 길이 규격({BODY_LIMIT}자)을 "
@@ -133,11 +178,18 @@ def check_bodies(cmd_exec, heredocs):
                 "\n"
                 "본문을 파일로 쓰고 `--body-file <path>`로 넘기세요.\n"
                 "\n" + SKILL_REF)
+        path = resolve_path(raw, cwd, env)
         try:
             with open(path, encoding="utf-8") as f:
                 check_length(f.read())
-        except OSError:
-            pass  # 아직 없는 경로는 잴 것이 없다
+            continue
+        except (OSError, TypeError):
+            pass
+        # hook은 명령 실행 전에 돈다. 같은 명령이 만들 파일은 아직 없는 게 정상이고,
+        # 그 본문은 아래 heredoc 경로로 잰다. 그게 아니면 잴 수 없었다는 사실을 알린다.
+        if not any(raw in opener for opener, _ in heredocs):
+            warnings.append(
+                f"본문 파일 `{raw}`를 열지 못해 길이를 검사하지 못했습니다.")
 
     # 이슈 본문과 무관한 heredoc(다른 파일 작성 등)을 재지 않도록, 여는 줄이 본문
     # 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 잰다.
@@ -156,6 +208,8 @@ def last_user_message(transcript_path):
     content가 문자열인 것만 — 배열은 tool_result다. isMeta는 슬래시 커맨드 caveat나
     훅 주입 컨텍스트라 실제 발화가 아니다.
     """
+    if not transcript_path:
+        return None
     last = None
     try:
         with open(transcript_path, encoding="utf-8") as f:
@@ -182,13 +236,14 @@ def judge(payload):
     if not actions:
         return None
 
+    warnings = []
     try:
         # 한 명령에 gh api와 gh issue가 함께 있어도 둘 다 검사한다 —
         # 앞의 issue 호출만 보고 넘기면 뒤의 api 우회가 통과한다.
         if "api" in actions:
             check_api_bypass(cmd_exec)
         if actions & {"create", "edit"}:
-            check_bodies(cmd_exec, heredocs)
+            check_bodies(cmd_exec, heredocs, payload.get("cwd", ""), warnings)
     except Deny as d:
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
@@ -196,18 +251,17 @@ def judge(payload):
             "permissionDecisionReason": d.reason,
         }}
 
-    if "create" not in actions:
-        return None
+    if "create" in actions:
+        last = last_user_message(payload.get("transcript_path", ""))
+        if last and not ISSUE_REQUESTED.search(last):
+            warnings.append(
+                "직전 발화에 이슈 요청이 없습니다. 지금 세션에서 끝낼 일이면 커밋 "
+                "메시지가 기록이고, 이슈는 다음 세션에 넘길 것만 만듭니다.")
 
-    transcript = payload.get("transcript_path", "")
-    if not transcript:
-        return None
-    last = last_user_message(transcript)
-    if not last or ISSUE_REQUESTED.search(last):
+    if not warnings:
         return None
     return {
-        "systemMessage": "직전 발화에 이슈 요청이 없습니다. 지금 세션에서 끝낼 일이면 "
-                         "커밋 메시지가 기록이고, 이슈는 다음 세션에 넘길 것만 만듭니다.",
+        "systemMessage": "\n".join(warnings),
         "hookSpecificOutput": {"hookEventName": "PreToolUse"},
     }
 
