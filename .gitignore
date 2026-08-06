@@ -4,6 +4,9 @@
 # node 의존성 — 스킬 스크립트가 로컬 설치(npm install), 커밋하지 않는다. package-lock.json은 커밋
 node_modules/
 
+# python 바이트코드 — hook 판정부를 테스트에서 import할 때 생긴다
+__pycache__/
+
 # 데이터는 절대 커밋하지 않는다 — 이 레포는 로직만 (README 경계 원칙)
 /data/
 /.scratch/

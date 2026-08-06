@@ -42,7 +42,7 @@ argument-hint: "[<issue#>] [만들거나 고칠 내용]"
 
 ## 본문 — 4블록, 초과 금지
 
-`gh issue create --body-file <path>`로 전달한다. 인라인 heredoc은 깨진 셸 명령을 자주 만든다.
+`gh issue create --body-file <path>`로 전달한다. 인라인 heredoc은 깨진 셸 명령을 자주 만든다. 표준입력(`--body-file -`)과 `gh api`는 길이를 검사할 수 없어 hook이 막는다.
 
 ```markdown
 ## 무엇을
@@ -59,7 +59,7 @@ argument-hint: "[<issue#>] [만들거나 고칠 내용]"
 (범위 밖)
 ```
 
-**본문은 1,200자 이하.** `issue-guard` hook이 `gh issue create`를 가로채 초과분을 deny한다.
+**본문은 1,200자 이하.** `issue-guard` hook이 `gh issue create`와 `gh issue edit`를 가로채 초과분을 deny한다.
 
 블록을 늘리지 않는다. 칸이 늘면 채우기 위한 문장이 늘고, 그건 에이전트 입력에서 노이즈다. 8절 템플릿을 쓴 저장소는 완료 조건 보유율 97%인데 그 이슈들로 backlog가 붕괴했다.
 
