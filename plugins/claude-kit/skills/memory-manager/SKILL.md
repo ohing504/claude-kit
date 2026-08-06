@@ -1,13 +1,13 @@
 ---
 name: memory-manager
-description: ~/.claude 파일 기반 메모리의 cross-silo 중복·오배치·인덱스 bloat를 audit하고 사용자 확인 후 정리(revise)한다.
-argument-hint: "[audit|revise]"
+description: ~/.claude 파일 기반 메모리의 cross-silo 중복, 오배치, 인덱스 bloat를 점검하고 사용자 확인 후 정리한다.
+argument-hint: "[--global|--local]"
 allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(ls:*), Bash(git:*)
 ---
 
 # memory-manager
 
-파일 기반 메모리의 *배치·구조*(중복·오배치·인덱스)를 사용자 호출 시점에 정리. 콘텐츠 자체가 아니라 *어느 레이어·중복 여부·인덱스 비대*를 다룬다. audit(점검) → revise(정리).
+파일 기반 메모리의 *배치와 구조*(중복, 오배치, 인덱스)를 사용자 호출 시점에 정리. 콘텐츠 자체가 아니라 *어느 레이어, 중복 여부, 인덱스 비대*를 다룬다. 점검은 항상 실행하고(읽기 전용이라 안전), 정리(삭제, 통합, 재배치 같은 쓰기)는 항목별로 사용자 확인을 받은 것만 진행한다. 이 확인 게이트 자체가 이미 실행 여부를 그때그때 결정하므로, 점검과 정리를 가르는 별도 서브커맨드나 dry-run류 플래그는 두지 않는다.
 
 - **비용 모델**: 매 세션 로드되는 건 *현재 프로젝트 `MEMORY.md` 인덱스*뿐(개별 파일은 recall 시 surface). 비용은 프로젝트당 인덱스 길이, 진짜 낭비는 같은 보편 규칙이 여러 silo에 중복 저장되는 분산.
 - **사후 정리 레이어**: 메모리는 Claude가 세션 중 자율 저장하며 보편/고유를 가르는 장치가 없다. 본 스킬은 저장을 가로채지 않고 쌓인 분산을 주기적으로 걷어낸다.
@@ -29,13 +29,12 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(ls:*), Bash(git:*)
 
 호출 시:
 
-1. **요청 유형 분류** — `$ARGUMENTS`가 정확히 `audit` 또는 `revise`면 그대로 사용. 그 외(없거나 자연어 문장)이면 사용자 요청에서 다음 중 어느 유형인지 확인:
-   - **audit**: 메모리 구조·중복·배치 점검 (현재 프로젝트 / 전역 스윕)
-   - **revise**: audit 결과를 바탕으로 통합·삭제·재배치 실행
+1. **범위 분류** — `$ARGUMENTS`에서 범위 플래그(`--global`/`--local`)를 읽는다.
+   - **`--local`**: 현재 프로젝트 silo만(`~/.claude/projects/<cwd 인코딩>/memory/`).
+   - **`--global`**: 전역 스윕, 모든 프로젝트 silo(`~/.claude/projects/*/memory/`)와 `~/.claude/CLAUDE.md`.
+   - 플래그 없으면 사용자 요청 문구에서 판단(예: "전역으로" → `--global`), 모호하면 `--local` 기본.
 
-2. **audit (sub-agent 위임)**: 대량 정독 → sub-agent(general-purpose 또는 Explore) 위임 우선. 위임 불가 시 inline(`grep`·`wc`·인덱스만, 본문 정독은 의심 항목 한정). 범위:
-   - **현재 프로젝트**: `~/.claude/projects/<cwd 인코딩>/memory/` 한 silo.
-   - **전역 스윕**: `~/.claude/projects/*/memory/` 모든 silo (cross-silo 중복 탐지 필수).
+2. **점검 (sub-agent 위임)**: 대량 정독 → sub-agent(general-purpose 또는 Explore) 위임 우선. 위임 불가 시 inline(`grep`, `wc`, 인덱스만, 본문 정독은 의심 항목 한정). 범위는 1번에서 정한 `--local`/`--global`을 따른다. `--global`은 cross-silo 중복 탐지 필수.
 
    점검 항목:
    - **cross-silo 중복**: 같은 취지 feedback의 silo 간 분산(파일명 키워드 + 인덱스 취지 대조).
@@ -53,9 +52,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(ls:*), Bash(git:*)
    - (d) 재저장/stale → 삭제
    - (e) repo 역참조 누수 → docs-manager/사용자 라우팅
 
-   사용자 결정 후 revise 진행.
+   항목별로 사용자 결정을 받은 뒤 3번 정리를 진행한다.
 
-3. **revise (사용자 확인 후)**: 재배치·통합 시 네이티브 메모리 형식은 [`references/memory-routing.md`](references/memory-routing.md) 참조.
+3. **정리 (사용자 확인 후)**: 재배치, 통합 시 네이티브 메모리 형식은 [`references/memory-routing.md`](references/memory-routing.md) 참조.
    - **목록 확인**: 대상 파일 경로·취지를 *목록으로* 보고 + 확인. 삭제는 명시 결정 시만(overwrite·일괄 삭제 자동 금지).
    - **전역 통합**: 보편 규칙 → `~/.claude/CLAUDE.md` 1회 통합(Edit). 기존 섹션을 런타임에 읽어 실제 헤딩으로 매칭(섹션명 가정 금지). 적합 섹션 없으면 위치 확인.
    - **중복 silo 삭제**: 통합 후 같은 취지 per-project 중복 파일 삭제 + `MEMORY.md` 인덱스 라인 제거.
@@ -79,6 +78,6 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(ls:*), Bash(git:*)
 - **삭제 vs 보존 모호**: 미묘한 프로젝트별 뉘앙스(레포별 브랜치 전략 차이 등) 있으면 일괄 삭제 금지 — 보고 후 보존 여부 결정 받기.
 - **외부 관리 마커**: `~/.claude/CLAUDE.md`에 외부 도구 자동 동기 구간(START/END 마커 류)이 있으면 그 안 편집 금지. 통합은 마커 밖 영역에만.
 - **인덱스/파일 불일치**: 고아 인덱스 라인 제거, 미인덱스 파일은 인덱스 추가 또는 (재도출 가능 시) 삭제 후보 보고.
-- **홈 `.claude` silo**: cwd `~/.claude` 세션에서 생성되어 보편 feedback 섞이기 쉬운 특수 silo. feedback 성격은 거의 항상 tier 1 통합 후보(레포 고유 사실 아니면 여기 두지 않음). audit 우선 점검.
+- **홈 `.claude` silo**: cwd `~/.claude` 세션에서 생성되어 보편 feedback 섞이기 쉬운 특수 silo. feedback 성격은 거의 항상 tier 1 통합 후보(레포 고유 사실 아니면 여기 두지 않음). 우선 점검 대상.
 - **인덱스에 본문 서술**: `MEMORY.md`가 본문 자체를 담은 lean 위반 → 본문을 개별 파일 분리, 인덱스는 한 줄 포인터로 환원.
 - **repo 역참조 누수**: 보고만(memory-manager는 repo 문서 미편집), 수정은 docs-manager/사용자. 단순 링크면 제거, 누수 링크가 repo가 필요로 하는 사실 담았으면 인라인 후 제거 — 수정 주체가 의도로 판단.
