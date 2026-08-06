@@ -32,6 +32,8 @@ allowed-tools: Read, Bash(node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs *)
 
 ## 스크립트
 
+아래 예시는 경로를 짧게 적었다. 실행할 때는 `${CLAUDE_SKILL_DIR}/scripts/capture.mjs`로 부른다 — 현재 디렉토리와 무관하게 찾히고, 이 형태여야 프론트매터의 사전 승인 규칙에 걸려 권한 프롬프트가 뜨지 않는다.
+
 `scripts/capture.mjs` — 캡처 엔진 CLI(playwright 기본·satori 옵션). 호출자 스킬뿐 아니라 프로젝트 코드도 직접 호출 가능.
 
 ```bash

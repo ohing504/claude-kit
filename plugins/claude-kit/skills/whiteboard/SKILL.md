@@ -78,6 +78,8 @@ allowed-tools: Read, Write, Edit, Agent, Bash(${CLAUDE_SKILL_DIR}/scripts/verify
 
 ## 스크립트
 
+실행할 때는 `${CLAUDE_SKILL_DIR}/scripts/verify_render.sh`로 부른다 — 현재 디렉토리와 무관하게 찾히고, 이 형태여야 프론트매터의 사전 승인 규칙에 걸려 권한 프롬프트가 뜨지 않는다.
+
 - **`verify_render.sh <html>`** — 생성한 HTML을 headless Chrome으로 렌더해 Mermaid/Chart.js가 *실제로 그려졌는지* 검증한다(raw 잔존·미렌더 감지). 종료코드 0=통과, 1=렌더 실패(사유 출력), 3=Chrome 없음(검증 불가). headless가 통과해도 타이밍 레이스는 못 잡으니, 5단계의 견고한 코드(명시 `mermaid.run()`)가 1차 방어이고 이건 2차다.
 
 ## 참고 자산
