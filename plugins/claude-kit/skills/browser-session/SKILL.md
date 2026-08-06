@@ -1,7 +1,7 @@
 ---
 name: browser-session
 description: patchright 또는 playwright에서 launch_persistent_context로 로그인 세션을 프로파일 디렉토리에 저장·재사용하는 패턴 가이드. 세션 유효성 체크(쿠키·네비게이션), headless=false 로그인 대기 루프, 실행 중 만료 감지·재인증까지 Python/JS 양쪽 코드 템플릿으로 제공한다. "patchright 세션 저장", "로그인 상태 유지 크롤링", "persistent context profiles", "매번 로그인 안 하게", "세션 재사용", "세션 만료 처리", "브라우저 프로파일 관리" 같은 맥락이면 반드시 참조한다. 로그인이 필요한 사이트를 크롤링·스크래핑하거나 로그인 세션이 필요한 브라우저 자동화를 구현·리뷰·리팩터링할 때 이 가이드를 먼저 확인한다.
-tools: Bash, Read, Edit, Write
+allowed-tools: Read, Edit, Write
 ---
 
 # Browser Session — Persistent Context 세션 관리

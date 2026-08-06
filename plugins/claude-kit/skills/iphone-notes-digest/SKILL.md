@@ -1,8 +1,19 @@
 ---
 name: iphone-notes-digest
 description: 맥/아이폰 메모앱(Apple Notes)에 쌓인 메모를 추출하고, 메모 안의 링크·미디어를 실제로 열어 해석한 뒤(웹페이지 메타·유튜브/인스타/Threads 캡션, 음성으로만 설명하는 영상은 자막·STT까지), 메모별 섹션으로 정리한 한 장의 다이제스트(사실) 문서로 보고한다. "메모 정리하자", "메모앱 비우고 싶어", "아이폰 메모 추출해서 정리", "쌓인 메모 훑어줘", "Notes 정리", "메모에 인스타 릴스/링크 잔뜩 있는데 뭐였는지 모르겠어" 같은 요청에 사용한다. 메모를 단순히 옮겨적는 게 아니라, 링크 뒤의 내용까지 확인해 "이게 뭐였는지"를 다시 안 열어봐도 아는 사실로 만드는 것이 목적이다 — 살릴지/버릴지 판단(흡수·삭제·자산화)은 그 문서를 보는 사용자(또는 사용자의 노트 시스템)가 정한다. 메모에 URL·유튜브·인스타 릴스·Threads 링크가 섞여 있을 때 특히 가치가 크다.
-argument-hint: [folder-name]
-tools: Bash, WebFetch, Read, Write, Edit
+argument-hint: "[<folder-name>]"
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - WebFetch
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/list_folders.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/collect.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_notes.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/enrich_video.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_frames.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_carousel.sh *)
+  - Bash(${CLAUDE_SKILL_DIR}/scripts/extract_scans.sh *)
 ---
 
 # iPhone Notes Digest
@@ -32,10 +43,10 @@ tools: Bash, WebFetch, Read, Write, Edit
 
 ### 1. 폴더 선택 — *반드시 먼저 묻는다*
 
-`$ARGUMENTS`가 있고 **짧은 단어·구** (폴더명으로 해석되는 것)면 그 이름을 폴더로 바로 사용하고 이 단계를 건너뛴다(단, account 중복이 있으면 확인). 자연어 문장이거나 동사가 포함된 설명이면 폴더명이 아닌 맥락 정보로 취급하고 일반 흐름(목록 제시 → 선택)으로 진행한다. **없으면** `scripts/list_folders.sh`로 폴더 목록과 각 폴더 메모 수를 보여주고, **사용자에게 어떤 폴더를 처리할지 먼저 묻는다.** 이게 0순위다.
+`$ARGUMENTS`가 있고 **짧은 단어·구** (폴더명으로 해석되는 것)면 그 이름을 폴더로 바로 사용하고 이 단계를 건너뛴다(단, account 중복이 있으면 확인). 자연어 문장이거나 동사가 포함된 설명이면 폴더명이 아닌 맥락 정보로 취급하고 일반 흐름(목록 제시 → 선택)으로 진행한다. **없으면** `${CLAUDE_SKILL_DIR}/scripts/list_folders.sh`로 폴더 목록과 각 폴더 메모 수를 보여주고, **사용자에게 어떤 폴더를 처리할지 먼저 묻는다.** 이게 0순위다.
 
 ```bash
-scripts/list_folders.sh
+${CLAUDE_SKILL_DIR}/scripts/list_folders.sh
 # account별로 묶여 나오고, 잠긴 메모가 있으면 그 수도 함께 표기된다:
 #   [iCloud]
 #   레시피 (12) / 여행 (8, 잠김 2) / 보관 (5) ...
@@ -53,7 +64,7 @@ scripts/list_folders.sh
 선택된 폴더로 추출 + 영상 해석을 한 번에 돌린다:
 
 ```bash
-scripts/collect.sh "레시피" "여행"
+${CLAUDE_SKILL_DIR}/scripts/collect.sh "레시피" "여행"
 # 결과: $WORK_DIR/raw.txt (메모 원본), $WORK_DIR/enrich/NNN.txt (영상별 해석)
 ```
 
@@ -71,10 +82,10 @@ scripts/collect.sh "레시피" "여행"
 - **본문이 `[LOCKED]`인 메모**는 "잠김 — 본문 미열람"으로 섹션에 남기고(내용 지어내지 않는다), 상단 집계에 잠긴 건수를 포함한다. `collect.sh`가 "잠겨서 본문 추출 못 한 메모: N"을 보고하니 그 수를 쓴다.
 - 메모 본문의 영상 외 **웹 링크**도 여기서 처리한다. 의미 있는 외부 페이지는 WebFetch로 무엇에 관한 건지 한 줄 뽑고, 사내망·로컬(`192.168.*`)·죽은 옛 링크는 fetch 없이 "오래된/내부 링크"로 표기한다(가능하면 실제 도달 여부를 확인해 "도달 불가(404)" 같은 **사실**로 적는다 — 폐기 판단은 안 하고 사실만).
 - 메모가 많으면(수십 건+) 이 읽기·요약은 **sub-agent에 위임**해 요약만 받는다 — main 컨텍스트를 아낀다.
-- **시각이 핵심인 영상**(촬영·플레이팅·메이크업처럼 화면을 가리키며 설명 — 캡션·STT만으론 "무엇인지"가 안 잡히는 것)은 `scripts/extract_frames.sh <URL> [시작초] [끝초]`로 장면 전환 프레임을 뽑는다. 음성 타임스탬프가 아니라 *화면 전환* 기준이라 빠르게 바뀌는 예시를 놓치지 않는다(STT 시점만 뽑으면 한 구간에 여러 예시가 스쳐도 한 장만 건진다). 나온 `contact.jpg`(타일 시트, 자막이 박혀 어느 대목인지 보임)를 보고 **대표 컷만** 골라 다이제스트에 포함한다 — 모든 컷을 넣지 않는다. STT로 특정 대목 구간(예: 한 각도 설명 4~20초)을 알면 시작/끝초로 좁힌다.
+- **시각이 핵심인 영상**(촬영·플레이팅·메이크업처럼 화면을 가리키며 설명 — 캡션·STT만으론 "무엇인지"가 안 잡히는 것)은 `${CLAUDE_SKILL_DIR}/scripts/extract_frames.sh <URL> [시작초] [끝초]`로 장면 전환 프레임을 뽑는다. 음성 타임스탬프가 아니라 *화면 전환* 기준이라 빠르게 바뀌는 예시를 놓치지 않는다(STT 시점만 뽑으면 한 구간에 여러 예시가 스쳐도 한 장만 건진다). 나온 `contact.jpg`(타일 시트, 자막이 박혀 어느 대목인지 보임)를 보고 **대표 컷만** 골라 다이제스트에 포함한다 — 모든 컷을 넣지 않는다. STT로 특정 대목 구간(예: 한 각도 설명 4~20초)을 알면 시작/끝초로 좁힌다.
   - 이때도 경계는 같다: 프레임은 "이 영상이 뭔지" 보여주는 **사실(해석)**이다. 그 컷을 어디로 자산화할지(메모 커버·Wiki 등)는 스킬이 아니라 사용자/노트 시스템 몫.
-- **인스타 이미지 게시물·캐러셀**(슬라이드 안 텍스트가 본문 — 프롬프트·팁 모음 등): enrich가 `IMAGE_POST` 신호를 남기거나 `/p/` 링크의 캡션이 비면, `scripts/extract_carousel.sh <URL>`로 전 슬라이드를 받는다. **로그인 불필요** — `/embed/captioned/` 엔드포인트가 공개 게시물의 전 슬라이드 + 캡션을 비로그인으로 준다(yt-dlp/gallery-dl이 로그인 벽에 막혀도 이 경로는 뚫린다). 받은 `slide_NN.jpg`를 **다이제스트 작성 LLM이 비전으로 읽어** 본문(슬라이드별 텍스트)을 뽑는다. 영상의 extract_frames와 같은 경계: 추출=스크립트, 판독=LLM. 비공개·로그인 전용 게시물은 `NO_GQL_DATA`로 정직하게 표기.
-- **메모에 붙은 스캔 문서·이미지 첨부**(계약서·증명서 스캔, 붙여넣은 사진): Apple '문서 스캔'(UTI `com.apple.paper.doc.scan`)은 본문 텍스트에도, AppleScript `attachments`에도 안 잡히고 스캔이 든 메모는 `body`가 `-1700` 에러라 **`collect.sh`/`raw.txt`로는 존재조차 안 보인다.** 그런 메모(첨부만 있고 본문이 비거나, 제목만 있고 내용이 안 잡히는 것)는 `scripts/extract_scans.sh "<메모 제목 또는 x-coredata id>" [출력디렉토리]`로 꺼낸다. 스크립트는 스캔을 3순위로 시도한다: **(1) 메모앱이 만든 크롭·보정 완전본 PDF** — 스캔을 메모앱에서 **공유(공유→복사/파일에 저장)하면** `Data/tmp/.../HardLinkURLTemp/<UUID>/*/*.pdf`에 생기는, 화면에 보이는 바로 그 깔끔한 결과물(전 페이지 deskew·크롭). **크롭본을 원하면 이 한 번의 공유가 필요**하다. (2) 없으면 `Assets.bundle`의 페이지별 JPEG **원본(크롭 전, 책상·손까지 찍힘)** — 페이지 수는 완전. (3) `FallbackPDF`(크롭됐지만 렌더된 페이지만 — 관측: 7장 중 3장만). 붙여넣은 이미지는 `Media/` 원본을 복사. 꺼낸 것의 **페이지 순서·분류(계약서·사업자등록증·증명서 등)는 파일명이 아니라 작성 LLM이 비전으로 읽어** 정한다(extract_frames/carousel과 같은 경계: 추출=스크립트, 판독=LLM). iCloud 미다운로드·암호 메모는 스크립트가 표시한다.
+- **인스타 이미지 게시물·캐러셀**(슬라이드 안 텍스트가 본문 — 프롬프트·팁 모음 등): enrich가 `IMAGE_POST` 신호를 남기거나 `/p/` 링크의 캡션이 비면, `${CLAUDE_SKILL_DIR}/scripts/extract_carousel.sh <URL>`로 전 슬라이드를 받는다. **로그인 불필요** — `/embed/captioned/` 엔드포인트가 공개 게시물의 전 슬라이드 + 캡션을 비로그인으로 준다(yt-dlp/gallery-dl이 로그인 벽에 막혀도 이 경로는 뚫린다). 받은 `slide_NN.jpg`를 **다이제스트 작성 LLM이 비전으로 읽어** 본문(슬라이드별 텍스트)을 뽑는다. 영상의 extract_frames와 같은 경계: 추출=스크립트, 판독=LLM. 비공개·로그인 전용 게시물은 `NO_GQL_DATA`로 정직하게 표기.
+- **메모에 붙은 스캔 문서·이미지 첨부**(계약서·증명서 스캔, 붙여넣은 사진): Apple '문서 스캔'(UTI `com.apple.paper.doc.scan`)은 본문 텍스트에도, AppleScript `attachments`에도 안 잡히고 스캔이 든 메모는 `body`가 `-1700` 에러라 **`collect.sh`/`raw.txt`로는 존재조차 안 보인다.** 그런 메모(첨부만 있고 본문이 비거나, 제목만 있고 내용이 안 잡히는 것)는 `${CLAUDE_SKILL_DIR}/scripts/extract_scans.sh "<메모 제목 또는 x-coredata id>" [출력디렉토리]`로 꺼낸다. 스크립트는 스캔을 3순위로 시도한다: **(1) 메모앱이 만든 크롭·보정 완전본 PDF** — 스캔을 메모앱에서 **공유(공유→복사/파일에 저장)하면** `Data/tmp/.../HardLinkURLTemp/<UUID>/*/*.pdf`에 생기는, 화면에 보이는 바로 그 깔끔한 결과물(전 페이지 deskew·크롭). **크롭본을 원하면 이 한 번의 공유가 필요**하다. (2) 없으면 `Assets.bundle`의 페이지별 JPEG **원본(크롭 전, 책상·손까지 찍힘)** — 페이지 수는 완전. (3) `FallbackPDF`(크롭됐지만 렌더된 페이지만 — 관측: 7장 중 3장만). 붙여넣은 이미지는 `Media/` 원본을 복사. 꺼낸 것의 **페이지 순서·분류(계약서·사업자등록증·증명서 등)는 파일명이 아니라 작성 LLM이 비전으로 읽어** 정한다(extract_frames/carousel과 같은 경계: 추출=스크립트, 판독=LLM). iCloud 미다운로드·암호 메모는 스크립트가 표시한다.
 
 메모별 섹션 템플릿:
 
@@ -110,6 +121,8 @@ scripts/collect.sh "레시피" "여행"
 - 메모앱 원본은 기본적으로 건드리지 않는다. 사용자(시스템)가 처분을 정하고 "처리한 메모 지워줘"라고 토큰을 넘기면, `dispose_notes.sh <토큰>`로 먼저 DRY RUN(대상 확인) → `--confirm`으로 삭제한다. 토큰은 처리 끝난 메모/링크의 고유 ID. "무엇을 지울지"는 스킬이 정하지 않는다 — 넘겨받은 토큰만 실행한다.
 
 ## 스크립트
+
+실행할 때는 `${CLAUDE_SKILL_DIR}/scripts/<이름>`로 부른다 — 현재 디렉토리와 무관하게 찾히고, 이 형태여야 프론트매터의 사전 승인 규칙에 걸려 권한 프롬프트가 뜨지 않는다. `dispose_notes.sh`는 메모를 지우므로 승인 규칙에서 일부러 빼뒀다 — 실행마다 권한 프롬프트가 뜨는 것이 정상이다.
 
 - **`list_folders.sh`** — account별 폴더 목록 + 메모 수(+잠긴 메모 수). *폴더 선택을 먼저 묻기* 위한 도구.
 - **`collect.sh "폴더"...`** — 지정 폴더 추출 + 영상 일괄 enrich(캡션+STT). 수집의 전 과정.

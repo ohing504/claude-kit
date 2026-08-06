@@ -1,6 +1,7 @@
 ---
 topic: SKILL.md 특화 개선 점검 — ai-doc-improver 타입별 가이드
 absorbed-from: skill-creator (Anthropic 공식 SKILL.md·references/schemas.md·scripts/quick_validate.py·agents/analyzer), Agent Skills best-practices 공식 문서 (점검 휴리스틱 흡수, 내용 창작·eval 메커니즘은 제외)
+also-absorbed-from: Claude Code 스킬 문서 code.claude.com/docs/en/skills (프론트매터 필드표, 문자열 치환, 동적 컨텍스트 주입)
 ---
 
 # SKILL.md 특화 점검
@@ -9,10 +10,13 @@ absorbed-from: skill-creator (Anthropic 공식 SKILL.md·references/schemas.md·
 
 ## 프론트매터·형식 하드 검사 — 기계적으로 100% 잡히는 것부터
 
-정규식·길이·키 검사로 확정 판정 가능한 항목. 아래 하드 규칙은 공식 `quick_validate.py` 기준(위반 시 로드 실패), best-practice 규칙은 실패는 아니나 플래그.
+정규식, 길이, 키 검사로 확정 판정 가능한 항목. 아래 (하드) 표시는 공식 `quick_validate.py` 기준이며, 이 검증은 외부 배포 경로에서 돌아 위반 시 실패한다. Claude Code 자체는 더 관대해서 모르는 키를 무시하고 로드하므로, 규격에 어긋난 프론트매터가 조용히 무효가 된 채 남는다. best-practice 규칙은 실패는 아니나 플래그.
 
 - **`name` 형식** (하드) — `^[a-z0-9-]+$` 위반(대문자·공백·언더스코어), `--` 포함, 선행/후행 하이픈, 64자 초과 → 로드 실패. best-practice 추가 플래그: name에 `<>` 포함, 예약어 `anthropic`·`claude` 포함, `-v2`·`-new`·`-final` 버전 접미사(업데이트는 같은 name 유지).
-- **미허용 프론트매터 최상위 키** (하드) — 허용 집합 밖 키는 로드 실패. platform 허용: `name`·`description`·`license`·`allowed-tools`·`metadata`·`compatibility` (`metadata` 하위 키는 자유). Claude Code 확장 허용: `+when_to_use`·`disable-model-invocation`·`argument-hint`·`user-invocable`·`model` 등. `version`·`author`·`tags`처럼 확장 밖이면 플래그.
+- **프론트매터 최상위 키** — Claude Code가 받는 키는 `name`, `description`, `when_to_use`, `argument-hint`, `arguments`, `disable-model-invocation`, `user-invocable`, `allowed-tools`, `disallowed-tools`, `model`, `effort`, `context`, `agent`, `background`, `hooks`, `paths`, `shell`, `metadata`, `license`, `compatibility`. 이 밖의 키는 조용히 무시되므로 로드는 되지만 아무 효과가 없다 — 특히 도구 선언을 `tools`로 쓴 스킬은 선언이 무효다. `allowed-tools`(무프롬프트 허용)나 `disallowed-tools`(사용 차단) 중 어느 의도였는지 확인받고 옮길 후보로 플래그. `version`, `author`, `tags`도 같은 이유로 플래그.
+- **외부 배포 경로 상한** (하드) — claude.ai 업로드, Skills API, `package_skill.py`로 배포하는 스킬은 `name`, `description`, `license`, `allowed-tools`, `metadata`, `compatibility` 6개만 받고 나머지 키가 있으면 업로드가 에러로 실패한다(`Unexpected key(s) in SKILL.md frontmatter`). Claude Code 안에서만 쓰는 스킬이면 해당 없음.
+- **`argument-hint` 값이 따옴표 없이 `[`로 시작** — YAML이 리스트로 해석하고 표시할 때 문자열로 변환하므로 대괄호가 사라진다. `argument-hint: "[--auto] [<pr#>]"`처럼 감싸도록 제안.
+- **`$1`을 첫 인자로 사용** — 스킬 치환은 `$0`이 첫 인자, `$1`이 두 번째다(단일 파일 command의 `$1`과 다르다). 인자를 하나만 받는 스킬이 body에서 `$1`을 읽으면 항상 빈 값이므로 플래그. 위치 대신 이름으로 받으려면 `arguments` 프론트매터에 이름을 선언하고 body에서 `$name`으로 쓴다.
 - **`description` 하드 한도** (하드) — 비어있음, 1024자 초과, `<`/`>`(angle bracket) 포함 중 하나면 로드 실패(초과분 런타임 truncate). Claude Code 맥락이면 `description`+`when_to_use` 합산 1536자 초과도 플래그. (기존 '트리거 부실' 신호는 *내용* 축, 이건 *형식 상한*.)
 - **`compatibility` 초과** (하드) — 500자 초과 시 실패.
 
@@ -36,6 +40,7 @@ absorbed-from: skill-creator (Anthropic 공식 SKILL.md·references/schemas.md·
 
 - **`argument-hint` 없음** — body에 "경로", "URL", "파일", "인자", "폴더"를 받는 흐름이 있는데 프론트매터에 `argument-hint`가 없으면 플래그. 자동완성 힌트 부재.
 - **`$ARGUMENTS` 미활용** — `argument-hint`가 있는데 body에 `$ARGUMENTS` 처리(경로·명령 바로 사용 or 타입 검증 후 분기) 없음. 힌트와 body가 불일치.
+- **힌트에 없는 인자를 body가 읽음** — body가 `--auto` 같은 플래그나 두 번째 인자를 해석하는데 `argument-hint`에 안 적혀 있으면 플래그. 사용자는 자동완성에 보이는 것만 입력한다. 인자가 둘 이상이면 `$ARGUMENTS[0]`, `$ARGUMENTS[1]`로 위치를 나누거나 `arguments` 프론트매터로 이름을 준다.
 - **Edge Cases 섹션 없음** — 워크플로우가 3단계 이상이거나 실패 모드·예외 입력이 본문에 흩어져 있으면 플래그. 에러 케이스를 한 곳에서 찾을 수 없음.
 - **책임 경계 없음** — 스킬 범위가 광범위하거나 다른 스킬·도구와 겹치는 영역이 있는데 "한다/안 한다"가 명시되지 않으면 플래그.
 - **description 트리거 부실** — description이 단순 기능 서술이고 구체적인 트리거 문구("~해줘", "~하고 싶어" 류)가 없으면 플래그. 스킬 undertriggering의 주원인.
@@ -48,10 +53,12 @@ absorbed-from: skill-creator (Anthropic 공식 SKILL.md·references/schemas.md·
 
 - body에서 언급한 `references/`, `scripts/` 파일 경로가 실제로 없음 (broken pointer)
 - `scripts/` 안 스크립트를 body에서 호출하는데 시그니처·플래그명이 달라짐
-- `allowed-tools` / `tools` 목록에 있는 도구가 body 워크플로우에서 실제로 쓰이지 않음 (또는 반대)
+- `allowed-tools` 목록에 있는 도구가 body 워크플로우에서 실제로 쓰이지 않음 (또는 반대)
+- **`allowed-tools`의 Bash 규칙이 body의 명령 표기와 안 맞음** — 규칙은 `Bash(${CLAUDE_SKILL_DIR}/scripts/x.sh *)`인데 body는 `scripts/x.sh`로 호출하는 식이면 규칙이 매칭되지 않아 사전 승인이 무효가 된다. 규칙과 body 표기 중 어느 쪽을 맞출지 확인받고 플래그. 되돌리기 어려운 동작(삭제, 전송, 결제)을 하는 스크립트는 규칙에서 빼 권한 프롬프트를 남기는 쪽이 안전하다.
+- **`` !`명령` ``으로 주입하는 컨텍스트가 `allowed-tools`에 없음** — body 상단 Context 블록의 명령은 스킬 로드 시 먼저 실행되므로, 대응 규칙이 없으면 매 실행마다 권한 프롬프트가 뜬다.
 - **파일명·경로 위생** — 번들 파일명이 제네릭 패턴(`docN`·`fileN`·`untitled`·`temp`)이라 내용을 안 드러내거나, body 경로에 역슬래시 구분자(`scripts\helper.py`)가 있으면 플래그. 파일명은 내용 기반 서술형(`form_validation_rules.md`), 경로는 항상 forward slash.
 
-## SKILL.md 전용 잣대
+## SKILL.md 전용 기준
 
 범용 점검의 "본문이 비대 → references/ 외부화" 규칙에 **예외**와 **보완**이 있다:
 

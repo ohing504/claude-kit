@@ -1,8 +1,8 @@
 ---
 name: html-to-image
 description: HTML(파일·URL·문자열)을 카드뉴스·앱스토어·OG처럼 비율이 고정된 이미지(PNG/JPEG)로 캡처한다. 폰트·이미지 렌더 완료를 기다려 깨짐을 막고, 여러 장 batch 지원.
-argument-hint: [html-file-or-url] [preset]
-tools: Bash, Read
+argument-hint: "[<html-file>|<url>] [<preset>]"
+allowed-tools: Read, Bash(node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs *)
 ---
 
 # HTML to Image
@@ -27,25 +27,27 @@ tools: Bash, Read
 
 1. **소스 라우팅** — 캡처할 HTML이 로컬 파일(`--html`)인지, 로컬 dev 서버/URL(`--url`)인지, 인라인 문자열(`--html-string`)인지 정한다.
 2. **치수 결정** — 알려진 포맷이면 `--preset`(예: `instagram-carousel`), 아니면 `--width/--height`. 목록은 [`references/presets.json`](./references/presets.json).
-3. **캡처** — `scripts/capture.mjs` 실행. 영역은 기본 viewport 통째, 특정 요소만이면 `--selector`.
+3. **캡처** — `node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs` 실행. 영역은 기본 viewport 통째, 특정 요소만이면 `--selector`.
 4. **확인** — 출력 PNG/JPEG의 크기가 의도한 치수인지 본다(batch면 장수도).
 
 ## 스크립트
+
+실행 명령은 항상 `node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs`로 쓴다 — 현재 디렉토리와 무관하게 찾히고, 이 표기여야 프론트매터의 사전 승인 규칙에 걸려 권한 프롬프트가 뜨지 않는다.
 
 `scripts/capture.mjs` — 캡처 엔진 CLI(playwright 기본·satori 옵션). 호출자 스킬뿐 아니라 프로젝트 코드도 직접 호출 가능.
 
 ```bash
 # 단일 — 로컬 HTML을 인스타 캐러셀 비율로
-node scripts/capture.mjs --html ./slide.html --preset instagram-carousel --out ./out/01.png
+node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs --html ./slide.html --preset instagram-carousel --out ./out/01.png
 
 # 명시 치수 + 레티나 2배
-node scripts/capture.mjs --html ./og.html --width 1200 --height 630 --scale 2 --out ./og.png
+node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs --html ./og.html --width 1200 --height 630 --scale 2 --out ./og.png
 
 # 특정 요소만 (전체 페이지 중 .card 하나)
-node scripts/capture.mjs --url http://localhost:5173/preview --selector ".card" --out ./card.png
+node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs --url http://localhost:5173/preview --selector ".card" --out ./card.png
 
 # batch — manifest의 각 항목이 전역 기본값(preset 등) 상속, 항목값 우선
-node scripts/capture.mjs --preset instagram-carousel --manifest ./slides.json
+node ${CLAUDE_SKILL_DIR}/scripts/capture.mjs --preset instagram-carousel --manifest ./slides.json
 #   slides.json: [{"html":"./s1.html","out":"./out/01.png"}, {"html":"./s2.html","out":"./out/02.png"}]
 ```
 
@@ -65,7 +67,7 @@ node scripts/capture.mjs --preset instagram-carousel --manifest ./slides.json
 Playwright + chromium 필요(최초 1회):
 
 ```bash
-cd scripts && npm install && npx playwright install chromium
+cd "${CLAUDE_SKILL_DIR}/scripts" && npm install && npx playwright install chromium
 ```
 
 ## Edge Cases

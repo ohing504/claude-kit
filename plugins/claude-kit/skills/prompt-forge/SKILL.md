@@ -1,8 +1,8 @@
 ---
 name: prompt-forge
 description: 대충 던진 요청을 반응형 인터뷰로 파고들어 진짜 의도를 뽑아낸 뒤, 다른 실행(ultracode 견고 작업·Fable 원샷·loop 시드·일반 에이전트)에 붙여넣을 의도 명세(intent spec, 프롬프트 형식)로 만드는 메타프롬프팅 도구 — 문구를 다듬는 게 아니라 무엇을 시킬지의 의도·맥락을 정밀화한다. 요청이 짧거나 모호할수록, 되물을 수 없는 원샷·반복 실행일수록 값이 크다. "이거 시킬 프롬프트 짜줘", "목적 물어보고 최종 프롬프트로 만들어줘", "loop 돌릴 goal 명세 만들어줘" 같은 요청에 쓴다. 이미 있는 문서 다듬기(ai-doc-improver)와 달리 의도에서 새로 만든다.
-argument-hint: [대충 시키고 싶은 것]
-tools: Read, Write, Glob, AskUserQuestion
+argument-hint: "[대충 시키고 싶은 것]"
+allowed-tools: Read, Write, Glob, AskUserQuestion
 ---
 
 # prompt-forge
@@ -23,7 +23,7 @@ tools: Read, Write, Glob, AskUserQuestion
      - 핸드오프 예: `` `prompts/<name>.md` 파일을 읽고 그 안의 프롬프트를 그대로 실행해줘 `` — 다음 세션의 순정 Claude가 스킬 없이도 이해하게 자급자족으로.
      - 임시 맥락(일회성 문서·해결되면 쓸모없어질 내용)이 든 프롬프트면 저장 시 그 사실을 알린다 — 재사용 자산이 아니라 쓰고 지우는 파일이다.
 
-## 무엇을 묻나 (인터뷰 잣대)
+## 무엇을 묻나 (인터뷰 기준)
 
 한 번에 묶음 질문을 다 던지지 않는다. 답에 반응하는 질문이 인터뷰 품질을 만든다 — 질문 수가 아니다.
 
