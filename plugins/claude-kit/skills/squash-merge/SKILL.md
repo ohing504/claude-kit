@@ -1,6 +1,6 @@
 ---
 name: squash-merge
-description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단)·방금 머지한 PR 브랜치만 로컬 정리·base 동기화까지 한 흐름. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인.
+description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단)·방금 머지한 PR 브랜치만 로컬 정리·base 동기화까지 한 흐름. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인(`--auto` 인자로만 생략).
 argument-hint: "[--auto] [<pr#>|<branch>|<url>]"
 allowed-tools: Bash(gh:*), Bash(git:*)
 ---
