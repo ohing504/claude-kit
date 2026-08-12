@@ -65,14 +65,19 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 ### Step 4. squash merge 실행
 
 ```bash
-gh pr merge <NUM> --squash --delete-branch --subject "<subject>" --body "$(cat <<'EOF'
+gh pr merge <NUM> --squash --subject "<subject>" --body "$(cat <<'EOF'
 <body>
 EOF
 )"
+
+# 원격 head 삭제 (repo auto-delete가 켜져 있으면 이미 없으므로 실패 무시)
+git push origin --delete "<PR headRefName>" 2>/dev/null \
+  || echo "원격 브랜치 이미 삭제됨"
 ```
 
 - GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
-- `--delete-branch`: 원격 head 즉시 삭제 → Step 5의 `[gone]` 감지 보장(repo auto-delete 설정 무관). 이어지는 gh의 로컬 삭제는 worktree 미인식으로 실패해도 무방 — 로컬 정리는 Step 5(worktree-aware) 담당.
+- **`--delete-branch`(`-d`) 사용 금지.** 이 옵션은 원격만이 아니라 로컬까지 정리하는데, 그 과정에서 gh가 현재 워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른 세션의 미커밋 변경이 워크트리에 있으면 그 pull이 실패하고(사용자 `pull.rebase=true`면 rebase 거부 메시지), 체크아웃된 브랜치만 바뀐 채 남는다. 원격 삭제는 위 `git push origin --delete`로, 로컬 정리는 Step 5(worktree-aware)로 분리한다.
+- 원격 head를 여기서 지워야 Step 5의 `[gone]` 감지가 성립한다. `git push origin --delete`는 로컬 remote-tracking ref도 함께 지운다.
 
 ### Step 5. 방금 머지한 PR 브랜치만 로컬 정리 (worktree 처리 포함)
 
@@ -112,7 +117,13 @@ BASE=<PR baseRefName>   # Step 1에서 받은 값 (보통 main, develop 등일 �
 MAIN_WT=$(git worktree list | head -1 | awk '{print $1}')
 CURRENT_WT=$(git rev-parse --show-toplevel)
 if [ "$CURRENT_WT" = "$MAIN_WT" ]; then
-  git checkout "$BASE" && git pull --ff-only
+  if [ -n "$(git status --porcelain)" ] && [ "$(git branch --show-current)" != "$BASE" ]; then
+    # 다른 세션의 미커밋 변경 — checkout으로 건드리지 않고 ref만 갱신
+    git fetch origin "$BASE:$BASE" \
+      && echo "미커밋 변경 있어 checkout 없이 로컬 $BASE ref만 fast-forward"
+  else
+    git checkout "$BASE" && git pull --ff-only
+  fi
 else
   # linked worktree에서 실행 중 — base는 메인 워크트리 소유. 여기서 checkout 강행 X (already checked out 실패).
   git fetch origin "$BASE:$BASE" 2>/dev/null \
@@ -122,7 +133,7 @@ fi
 ```
 
 - base는 `main` 고정 X → Step 1의 `baseRefName` 사용(develop 등 비-main 대응).
-- fast-forward 실패 시(로컬 base 미커밋 변경 등) 보고 후 강제 진행 X.
+- fast-forward 실패 시 보고 후 강제 진행 X. `git pull`은 미커밋 변경이 있으면 실패하므로(전역 `pull.rebase=true`면 rebase 거부), 워크트리가 dirty하고 현재 브랜치가 base가 아니면 checkout 없이 ref만 갱신한다 — 다른 세션의 미커밋 변경은 그대로 둔다.
 - linked worktree에선 `git checkout` 강행 X — base가 메인 워크트리에 이미 체크아웃돼 실패.
 
 ## Execution
