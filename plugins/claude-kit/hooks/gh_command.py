@@ -21,6 +21,9 @@ COMMAND_POSITION = (r"(?:^|[\n;&|(){`]|\$\()[ \t]*"
 # 체인에 섞인 다른 명령의 플래그(`git push -d`)를 gh의 것으로 읽는다.
 SEGMENT_END = re.compile(r";|&&|\|\||\n|\|(?!\|)")
 
+# 인용된 인자 값(subject, 인라인 body)은 실행되는 명령이 아니라 데이터다.
+QUOTED_VALUE = re.compile(r"\"(?:[^\"\\]|\\.)*\"|'[^']*'", re.S)
+
 
 def split_heredocs(command):
     """명령을 (실행되는 부분, [(여는 줄, 본문), ...])으로 나눈다.
@@ -51,6 +54,18 @@ def split_heredocs(command):
     if current is not None:  # 닫히지 않은 채 끝났다
         heredocs.append((current[2], "\n".join(body)))
     return "\n".join(exec_lines), heredocs
+
+
+def mask_quoted(cmd_exec):
+    """인용된 인자 값의 내용만 `x`로 덮는다. 인용부호와 길이는 그대로 둔다.
+
+    플래그를 이 처리 없이 찾으면 두 방향으로 틀린다 — subject에 적은
+    `--delete-branch`가 실제 플래그로 읽히고(오탐), 값 안의 `;`가 호출 구간을
+    끊어 그 뒤의 진짜 플래그가 판정에서 빠진다(미탐).
+    """
+    return QUOTED_VALUE.sub(
+        lambda m: m.group(0)[0] + "x" * (len(m.group(0)) - 2) + m.group(0)[-1],
+        cmd_exec)
 
 
 def segments(cmd_exec, pattern):

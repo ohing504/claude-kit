@@ -107,6 +107,33 @@ class MentionsAreNotInvocations(GuardCase):
     def test_unrelated_command(self):
         self.assertAllowed("git push origin --delete feat/x")
 
+    def test_flag_named_in_subject(self):
+        """이 PR 자신을 머지하는 형태 — subject가 금지 플래그 이름을 인용한다."""
+        self.assertAllowed(
+            f'{MERGE} --squash --subject "fix(squash-merge): --delete-branch 제거" -b x')
+
+    def test_flag_named_in_inline_body(self):
+        self.assertAllowed(f'{MERGE} --squash -t "fix: x" -b "gh의 -d 사용 중단"')
+
+    def test_short_flag_letter_inside_quoted_value(self):
+        """`--merge`인데 subject에 `-s`가 있다고 squash로 읽으면 안 된다."""
+        self.assertAllowed(f'{MERGE} --merge --subject "add -s support"')
+
+
+class QuotingAndSpacing(GuardCase):
+    def test_separator_in_quoted_value_does_not_end_segment(self):
+        """값 안의 `;`가 구간을 끊으면 그 뒤의 `--delete-branch`가 판정에서 빠진다."""
+        self.assertDenied(f'{MERGE} --squash -t x -b "y; z" --delete-branch',
+                          contains="--delete-branch")
+
+    def test_pipe_in_quoted_subject_keeps_body_visible(self):
+        self.assertAllowed(f'{MERGE} --squash --subject "a|b" --body "c"')
+
+    def test_extra_whitespace_between_words(self):
+        """선별기가 판정부보다 좁으면 그만큼이 검사 없이 통과한다."""
+        self.assertDenied("gh  pr   merge 16 --squash --delete-branch -t a -b b",
+                          contains="--delete-branch")
+
 
 class CommandPositions(GuardCase):
     def test_after_separators(self):

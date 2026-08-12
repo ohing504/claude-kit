@@ -9,8 +9,10 @@ set -euo pipefail
 
 input=$(cat)
 
+# 판정부보다 좁게 잡으면 그만큼이 검사 없이 통과한다 — 판정부는 `gh   pr\tmerge`처럼
+# 공백이 늘어난 형태도 호출로 읽으므로 여기서는 순서만 보고 간격은 보지 않는다.
 case "$input" in
-  *"gh pr merge"*|*"gh pr"*merge*) ;;
+  *gh*pr*merge*) ;;
   *) exit 0 ;;
 esac
 

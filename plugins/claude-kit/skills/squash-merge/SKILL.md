@@ -70,9 +70,9 @@ gh pr merge <NUM> --squash --subject "<subject>" --body "$(cat <<'EOF'
 EOF
 )"
 
-# 원격 head 삭제 (repo auto-delete가 켜져 있으면 이미 없으므로 실패 무시)
-git push origin --delete "<PR headRefName>" 2>/dev/null \
-  || echo "원격 브랜치 이미 삭제됨"
+# 원격 head 삭제 (repo auto-delete가 켜져 있으면 이미 없어 실패한다)
+git push origin --delete "<PR headRefName>" \
+  || echo "원격 브랜치 삭제 실패 — 위 git 출력 확인 (이미 삭제됐으면 그대로 진행)"
 ```
 
 - GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
@@ -117,10 +117,15 @@ BASE=<PR baseRefName>   # Step 1에서 받은 값 (보통 main, develop 등일 �
 MAIN_WT=$(git worktree list | head -1 | awk '{print $1}')
 CURRENT_WT=$(git rev-parse --show-toplevel)
 if [ "$CURRENT_WT" = "$MAIN_WT" ]; then
-  if [ -n "$(git status --porcelain)" ] && [ "$(git branch --show-current)" != "$BASE" ]; then
-    # 다른 세션의 미커밋 변경 — checkout으로 건드리지 않고 ref만 갱신
-    git fetch origin "$BASE:$BASE" \
-      && echo "미커밋 변경 있어 checkout 없이 로컬 $BASE ref만 fast-forward"
+  if [ -n "$(git status --porcelain)" ]; then
+    if [ "$(git branch --show-current)" = "$BASE" ]; then
+      # 미커밋 변경이 base 위에 있음 — pull도 fetch도 안 되므로 보고만 한다
+      echo "$BASE에 미커밋 변경이 있어 동기화 skip — 커밋하거나 stash한 뒤 직접 pull하세요"
+    else
+      # 다른 세션의 미커밋 변경 — checkout으로 건드리지 않고 ref만 갱신
+      git fetch origin "$BASE:$BASE" \
+        && echo "미커밋 변경 있어 checkout 없이 로컬 $BASE ref만 fast-forward"
+    fi
   else
     git checkout "$BASE" && git pull --ff-only
   fi
@@ -133,7 +138,7 @@ fi
 ```
 
 - base는 `main` 고정 X → Step 1의 `baseRefName` 사용(develop 등 비-main 대응).
-- fast-forward 실패 시 보고 후 강제 진행 X. `git pull`은 미커밋 변경이 있으면 실패하므로(전역 `pull.rebase=true`면 rebase 거부), 워크트리가 dirty하고 현재 브랜치가 base가 아니면 checkout 없이 ref만 갱신한다 — 다른 세션의 미커밋 변경은 그대로 둔다.
+- fast-forward 실패 시 보고 후 강제 진행 X. `git pull`은 미커밋 변경이 있으면 실패하므로(전역 `pull.rebase=true`면 rebase 거부), 워크트리가 dirty하면 `git pull`을 돌리지 않는다 — 현재 브랜치가 base가 아니면 checkout 없이 ref만 갱신하고, base 위에 미커밋 변경이 있으면(체크아웃된 브랜치라 fetch도 거부됨) 동기화를 건너뛰고 보고만 한다. 어느 쪽이든 미커밋 변경은 그대로 둔다.
 - linked worktree에선 `git checkout` 강행 X — base가 메인 워크트리에 이미 체크아웃돼 실패.
 
 ## Execution

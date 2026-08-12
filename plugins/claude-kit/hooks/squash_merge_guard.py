@@ -18,7 +18,7 @@ import json
 import re
 import sys
 
-from gh_command import segments, split_heredocs
+from gh_command import mask_quoted, segments, split_heredocs
 
 SKILL_REF = "작성 규격은 /squash-merge 스킬."
 
@@ -46,7 +46,7 @@ def judge(payload):
     command = payload.get("tool_input", {}).get("command", "")
     cmd_exec, _ = split_heredocs(command)
 
-    for segment in segments(cmd_exec, PR_MERGE):
+    for segment in segments(mask_quoted(cmd_exec), PR_MERGE):
         if not SQUASH_FLAG.search(segment):
             continue
         if DELETE_BRANCH_FLAG.search(segment):
