@@ -18,22 +18,13 @@ import os
 import re
 import sys
 
+from gh_command import COMMAND_POSITION, segments, split_heredocs
+
 # 4블록(무엇을/완료 조건/시작 지점/하지 말 것)이면 충분한 상한.
 # 붕괴한 저장소 본문 중앙값 1,957자, 정상 운영 저장소 880~1,061자.
 BODY_LIMIT = 1200
 
 SKILL_REF = "작성 규격은 /git-issue 스킬."
-
-# `<<<`(here-string)는 heredoc이 아니다. 앞에 `<`가 더 있으면 여는 줄로 보지 않는다 —
-# 오인하면 뒤따르는 줄이 전부 본문으로 먹혀 그 줄의 gh 호출이 판정에서 빠진다.
-HEREDOC_OPEN = re.compile(r"(?<!<)<<(-?)(['\"]?)([A-Za-z_]\w*)\2")
-
-# gh가 명령 위치(줄 시작, `;` `&&` `||` `|` `(` `{` `$(` 백틱 뒤)에 올 때만 호출로 본다.
-# 부분일치로 판정하면 이 문자열을 언급만 하는 명령(커밋 메시지, grep, 문서 편집)이 걸린다.
-# 명령 앞에 붙는 실행 래퍼(`env FOO=1`, `time`, `sudo`)와 변수 할당은 건너뛴다.
-COMMAND_POSITION = (r"(?:^|[\n;&|(){`]|\$\()[ \t]*"
-                    r"(?:(?:sudo|env|command|nohup|time|timeout)[ \t]+)*"
-                    r"(?:\w+=\S*[ \t]+)*gh[ \t]+")
 
 BODY_FILE_FLAG = re.compile(r"(?:--body-file|(?:^|\s)-F)[=\s]\s*(\S+)")
 INLINE_BODY_FLAG = re.compile(
@@ -44,10 +35,8 @@ API_INPUT_FLAG = re.compile(r"(?:^|\s)--input[=\s]")
 # 코멘트 엔드포인트만 면제한다. 문자열 어디든 `comments`가 있으면 면제하면
 # `-f body="$(cat docs/comments.md)"` 같은 경로 이름으로 우회된다.
 API_COMMENTS_ENDPOINT = re.compile(r"issues/\d+/comments")
-# gh 호출 하나가 끝나는 지점. 본문 파일 플래그는 이 구간 안에서만 찾는다 —
-# 명령 전체에서 찾으면 체인에 섞인 `curl -F`의 값을 본문 경로로 읽는다.
-SEGMENT_END = re.compile(r";|&&|\|\||\n|\|(?!\|)")
-GH_INVOCATION = re.compile(COMMAND_POSITION + r"(?:issue[ \t]+(?:create|edit)|api)\b")
+# 본문 파일 플래그를 찾을 구간을 정하는 호출 패턴.
+GH_INVOCATION = r"(?:issue[ \t]+(?:create|edit)|api)\b"
 # 명령 앞머리의 `NAME=value`. 실측상 본문 경로에 쓰인 셸 변수 213건 중 206건이
 # 같은 명령 안에서 이렇게 할당된다.
 ASSIGNMENT = re.compile(r"(?:^|[\n;&|(])[ \t]*(\w+)=(\"[^\"]*\"|'[^']*'|[^\s;&|]*)")
@@ -64,39 +53,6 @@ class Deny(Exception):
         self.reason = reason
 
 
-def split_heredocs(command):
-    """명령을 (실행되는 부분, [(여는 줄, 본문), ...])으로 나눈다.
-
-    명령 문자열에는 실행되는 명령과 데이터가 섞여 있다. heredoc 본문은 실행되는
-    부분이 아니므로 판정에서 뺀다 — 이 hook을 설명하는 커밋 메시지가 자기 자신에게
-    차단되는 일이 실제로 있었다. 플래그는 항상 본문 밖에 있으므로 본문 추출도
-    실행되는 부분으로 한다.
-
-    한 줄에 여러 개가 열릴 수 있다(`cmd <<A <<B`). 첫 하나만 추적하면 나머지 본문이
-    실행부에 남아 길이를 재지 못한다. 여는 순서대로 대기열에 넣고 차례로 닫는다.
-    """
-    exec_lines, heredocs, pending = [], [], []
-    current, body = None, None
-    for line in command.split("\n"):
-        if current is not None:
-            tag, indented, opener = current
-            if (line.lstrip("\t ") if indented else line) == tag:
-                heredocs.append((opener, "\n".join(body)))
-                current, body = (pending.pop(0), []) if pending else (None, None)
-                continue
-            body.append(line)
-            continue
-        exec_lines.append(line)
-        opened = [(m.group(3), m.group(1) == "-", line)
-                  for m in HEREDOC_OPEN.finditer(line)]
-        if opened:
-            pending.extend(opened)
-            current, body = pending.pop(0), []
-    if current is not None:  # 닫히지 않은 채 끝났다
-        heredocs.append((current[2], "\n".join(body)))
-    return "\n".join(exec_lines), heredocs
-
-
 def detect_actions(cmd_exec):
     """명령 하나에 여러 호출이 섞일 수 있으므로(`&&` 체인) 전부 모은다."""
     return {action
@@ -104,16 +60,6 @@ def detect_actions(cmd_exec):
                                     ("edit", r"issue[ \t]+edit\b"),
                                     ("api", r"api\b"))
             if re.search(COMMAND_POSITION + pattern, cmd_exec)}
-
-
-def gh_segments(cmd_exec):
-    """gh 호출마다 그 호출이 끝나는 지점까지의 구간을 돌려준다."""
-    segments = []
-    for m in GH_INVOCATION.finditer(cmd_exec):
-        rest = cmd_exec[m.end():]
-        end = SEGMENT_END.search(rest)
-        segments.append(rest[:end.start()] if end else rest)
-    return segments
 
 
 def expand_vars(text, env):
@@ -174,7 +120,7 @@ def check_bodies(cmd_exec, heredocs, cwd, warnings):
     # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
     # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
     body_files = [m.group(1).strip("\"'")
-                  for segment in gh_segments(cmd_exec)
+                  for segment in segments(cmd_exec, GH_INVOCATION)
                   for m in BODY_FILE_FLAG.finditer(segment)]
     env = shell_assignments(cmd_exec)
     for raw in body_files:
