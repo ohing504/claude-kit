@@ -25,7 +25,7 @@ PR squash merge → 메시지 정리 → 로컬 정리 한 흐름으로 실행.
 타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
 
 PR 정보 + 변경 사항:
-- `gh pr view <NUM> --json number,headRefName,baseRefName,title,commits,files,state,mergeable,mergeStateStatus`
+- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus`
 - `gh pr diff <NUM>` (full net diff)
 
 `baseRefName`은 Step 6 동기화에 재사용하므로 기억해 둔다.
@@ -45,12 +45,32 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - PR 내 자체 발견 버그·수정 commit
 - 되돌린 작업 (revert·restore)
 - 중간 refactor·rename 후 재변경 흔적
-- 개별 commit message 인용
+- 개별 commit message 인용 (이슈 참조 줄은 예외, 아래 수집 규칙)
 - 세션 발화·블로커·디버깅 과정·키 디시전 번호(D-NN) 인용
 
 **형식**:
 - subject: `type(scope): summary` — recent commits + CLAUDE.md 컨벤션 일치
 - body: 5줄 이내 bullet — net 변경만, HEREDOC
+- 이슈 참조 줄은 body 맨 끝에 별도 블록으로, bullet 5줄 제한에 포함하지 않는다
+
+**이슈 참조 수집 — commit history 차단의 유일한 예외**
+
+출처는 셋: PR body, PR 제목, 각 commit의 `messageHeadline`+`messageBody`(Step 1의 `commits`). `Close|Closes|Closed|Fix|Fixes|Fixed|Resolve|Resolves|Resolved #N`과 `Refs #N`을 모두 걷는다.
+
+- **이슈 번호마다 키워드를 반복해 한 줄씩.** `Closes #1, #2`는 GitHub가 #1만 닫는다. 타 저장소는 `Closes owner/repo#100`.
+- **중복 제거**: 여러 출처가 같은 이슈를 언급하면(PR body와 commit 양쪽, 또는 commit 여럿) 한 줄로 합친다. 같은 이슈에 닫기 키워드와 `Refs`가 섞여 있으면 닫기 키워드만 남긴다.
+- **키워드 승격 금지**: `Refs #N`만 있던 이슈를 `Closes`로 바꾸지 않는다. 닫을지는 그 이슈의 완료 조건이 정한다.
+- **net diff에서 사라진 작업의 참조는 뺀다**: 중간 commit이 `Closes #7`을 달았어도 그 변경이 PR 안에서 되돌려졌으면 넣지 않는다. net diff 기준은 참조 줄에도 같이 적용된다.
+
+배치는 bullet과 빈 줄 하나로 띄운 마지막 블록.
+
+```
+- <net 변경 bullet>
+
+Closes #12
+Closes #14
+Refs #9
+```
 
 ### Step 3. 실행 전 확인 게이트 (자동 발화·명시 호출 공통)
 
