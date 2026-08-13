@@ -26,7 +26,7 @@ argument-hint: "[<issue#>] [만들거나 고칠 내용]"
 
 **생성 전 중복 검색**: `gh search issues --repo <owner/repo> "<핵심어>" --state open`. 유사한 것이 있으면 새로 만들지 말고 그 이슈에 붙인다.
 
-**close 권한 없음**: 이슈는 PR 본문 `Closes #N`으로 머지와 함께 닫는다. `gh issue close`를 직접 실행하지 않는다. 단 `Closes`는 PR이 기본 브랜치를 타겟할 때만 동작하므로, base가 기본 브랜치가 아니면 머지 후 close가 필요함을 사용자에게 보고하고 확인을 받는다.
+**close 권한 없음**: 이슈는 PR 본문 `Closes #N`으로 머지와 함께 닫는다. `gh issue close`를 직접 실행하지 않는다.
 
 ## 제목 — 증상 서술문
 
