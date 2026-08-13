@@ -7,13 +7,13 @@ node_modules/
 # python 바이트코드 — hook 판정부를 테스트에서 import할 때 생긴다
 __pycache__/
 
-# 데이터는 절대 커밋하지 않는다 — 이 레포는 로직만 (README 경계 원칙)
 /data/
 /.scratch/
 notes-digest-*.md
 
-# 내부 기획·리서치는 공개 레포에 올리지 않는다 (로컬 보관)
-/docs/
+/docs/*
+!/docs/decisions/
 
-# ephemeral plan·작업 산출물 (로컬 보관)
+/.claude/rules/
+
 /.agentfiles/
