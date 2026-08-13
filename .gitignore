@@ -14,6 +14,6 @@ notes-digest-*.md
 /docs/*
 !/docs/decisions/
 
-/.claude/rules/
+/.claude/rules/decision-records.md
 
 /.agentfiles/
