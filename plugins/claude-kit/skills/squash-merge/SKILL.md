@@ -97,7 +97,7 @@ if [ "$track" != "[gone]" ]; then
 else
   worktree=$(git worktree list | grep "\\[$HEAD_BRANCH\\]" | awk '{print $1}')
   if [ "$worktree" = "$CURRENT_WT" ] && [ "$CURRENT_WT" != "$MAIN_WT" ]; then
-    echo "⏭  현재 작업 중인 linked worktree — Claude Code worktree 세션이라 정리는 세션 종료 시 keep/remove 프롬프트에서. 브랜치 '$HEAD_BRANCH'도 worktree와 함께 보존."
+    echo "⏭  현재 작업 중인 linked worktree — 정리는 세션 종료 시 keep/remove 프롬프트에서. remove를 고르면 워크트리와 브랜치 '$HEAD_BRANCH'가 함께 삭제되고, keep이면 둘 다 남는다."
   elif [ "$worktree" = "$CURRENT_WT" ]; then
     # 메인 워크트리에서 그 브랜치를 체크아웃한 채 머지한 경우.
     # 워크트리는 그대로 두고 base로 옮긴 뒤 브랜치만 지운다.
@@ -114,7 +114,7 @@ else
 fi
 ```
 
-- **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X).
+- **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X). 그 프롬프트의 remove는 워크트리 디렉토리와 브랜치를 함께 삭제하므로 여기서 브랜치를 남겨도 스킬 밖에서 정리된다.
 - **메인 워크트리는 다르다.** 거기서 PR 브랜치를 체크아웃한 채 머지하면 `git worktree list`가 메인 워크트리를 그 브랜치 소유로 보여주지만, 이건 정리를 건너뛸 이유가 아니다 — base로 checkout하면 브랜치를 지울 수 있다. 워크트리 자체는 그대로 둔다.
 - **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단·별도 도구 몫.
 
