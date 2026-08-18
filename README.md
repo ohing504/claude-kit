@@ -50,6 +50,7 @@ claude plugin install claude-kit@claude-kit
 | 스킬 | 하는 일 |
 |---|---|
 | **iphone-notes-digest** _(macOS)_ | Apple Notes 메모·링크·영상(음성만 있는 건 STT까지)을 메모별 다이제스트로 정리 |
+| **idea-note** | 거친 아이디어를 짧은 인터뷰로 구체화해 저장소 GitHub Discussions에 기록(파일은 GitHub 없을 때만) |
 
 ### 🔧 Git·브라우저
 
@@ -67,6 +68,7 @@ claude plugin install claude-kit@claude-kit
 이 CLAUDE.md AI가 읽기 좋게 다이어트해줘   → ai-doc-improver
 이거 시킬 프롬프트 짜줘                   → prompt-forge
 메모앱에 쌓인 메모 정리해줘               → iphone-notes-digest
+이거 나중에 해보면 좋겠는데 메모해둬      → idea-note
 로그인 세션 유지하면서 이 사이트 크롤링해줘 → browser-session
 ```
 
