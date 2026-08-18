@@ -1,0 +1,40 @@
+# 아이디어 기록 위치와 도구 범위
+
+## 결정
+
+- **기록 위치** — 저장소 GitHub Discussions의 `Ideas` 카테고리가 정본이다. `docs/idea-notes.md` 파일은 GitHub remote가 없거나 사용자가 Discussions 활성화를 거절한 경우에만 쓴다.
+- **판정 생략 금지** — Discussions가 꺼져 있을 때 조용히 파일로 전환하지 않는다. 켜자고 안내하고 승인을 받는다.
+- **기록 위치는 저장소당 하나** — 플러그인이나 하위 영역 단위로 나누지 않는다.
+- **동작은 추가 하나** — 조회, 삭제, 이슈 승격을 스킬이 수행하지 않는다.
+- **묻는 것은 셋** — 계기, 하자는 것, 착수 조건 중 사용자 문장에 없는 것만 최대 2개까지 묻는다.
+- **우선순위를 기록하지 않는다** — 기록 시점에 매긴 값은 몇 주 뒤 다시 볼 때 그때의 맥락이 없어 판정 근거가 되지 못한다. 착수 조건은 시점이 지나도 판정되므로 그 자리를 대신한다.
+- **알림, 정기 리뷰, 우선순위 정렬을 붙이지 않는다.**
+
+## 확인
+
+```check
+{"checks": [
+  {"cmd": "grep -c 'has_discussions' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "2"},
+  {"cmd": "grep -c '추가 하나' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"},
+  {"cmd": "grep -c '우선순위는 기록하지 않고' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"}
+]}
+```
+
+## 근거
+
+**사실** — 저장소 파일에 적은 기록은 커밋해야 남고, 작업 브랜치에 있으면 머지 전까지 다른 브랜치에서 보이지 않고, 브랜치를 지우면 함께 사라진다(git 동작). Discussions는 브랜치와 커밋에 묶이지 않는다.
+
+**사실** — Discussions를 켜면 `Ideas`를 포함한 기본 카테고리 6개가 생성된다. [GitHub Docs — Managing categories for discussions](https://docs.github.com/en/discussions/managing-discussions-for-your-community/managing-categories-for-discussions) (2026-08-18 조회)
+
+**장점** — 기록에 커밋과 브랜치가 필요하지 않다. 스킬 본문이 추가 동작 하나로 짧게 유지된다.
+
+**단점** — GitHub이 없는 환경에서는 fallback 경로를 타므로 두 코드 경로를 유지해야 한다. Discussions를 켜지 않은 저장소에서는 첫 사용 시 사용자 승인 한 번이 더 필요하다.
+
+## 기각
+
+- **파일을 정본으로 유지** — 커밋 필요, 브랜치 종속, 브랜치 삭제 시 소실 셋이 그대로 남는다.
+- **Discussions가 꺼져 있으면 자동으로 파일로 전환한다** — 같은 저장소의 아이디어가 Discussions와 파일 두 곳에 나뉘어 쌓이고, 나중에 합칠 때 중복 판정부터 해야 한다.
+- **플러그인이나 하위 영역마다 기록 위치를 나눈다** — 적을 때마다 어느 위치인지 결정해야 해서 기록 절차가 길어진다. 아이디어는 대부분 쓰이지 않으므로 분류 비용이 회수되지 않는다.
+- **조회·삭제·승격 동작을 스킬에 넣는다** — 조회는 GitHub 검색과 `grep`이, 삭제는 GitHub UI와 편집이, 이슈 승격은 Discussion의 issue 변환 기능이 이미 수행한다. 다시 구현하면 같은 동작에 경로가 둘 생긴다.
+- **우선순위 필드를 기록한다** — 위 이유로 다시 볼 때 판정 근거가 되지 못한다.
+- **정기 리뷰나 알림을 붙인다** — 아이디어는 대부분 쓰이지 않는다. 알림이나 정기 리뷰를 붙이면 버리기 아까운 것을 남겨 두는 위치가 아니라 처리해야 할 목록이 된다.
