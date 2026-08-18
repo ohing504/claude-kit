@@ -13,7 +13,7 @@ allowed-tools: Bash(gh repo view:*), Bash(gh api:*), Read, Write, Edit, AskUserQ
 
 ## 어디에 쓰나
 
-Discussions가 정본이다. 파일은 GitHub이 없는 환경에서만 쓴다.
+Discussions가 정본이다. 파일은 GitHub remote가 없거나 사용자가 Discussions 활성화를 거절했을 때만 쓴다.
 
 파일이 정본이 아닌 이유 셋. 커밋이 필요하고, 작업 브랜치에 묶여 머지 전까지 안 보이고, 브랜치를 버리면 같이 사라진다.
 
@@ -21,7 +21,7 @@ Discussions가 정본이다. 파일은 GitHub이 없는 환경에서만 쓴다.
 
 1. `gh repo view --json nameWithOwner` — 실패하면 4번
 2. `gh api repos/<OWNER>/<NAME> -q '.has_discussions'` — `true`면 Discussions에 기록
-3. `false`면 켜자고 사용자에게 안내한다. 승인하면 `gh api -X PATCH repos/<OWNER>/<NAME> -F has_discussions=true`, 거절하면 4번
+3. `false`면 켜자고 사용자에게 안내한다. 승인하면 `gh api -X PATCH repos/<OWNER>/<NAME> -F has_discussions=true`(admin 권한이 없어 실패하면 4번), 거절하면 4번
 4. 파일 fallback — `docs/idea-notes.md`. 파일이 없으면 사용자 확인을 받고 신설한다(자동 생성 없음)
 
 **꺼져 있다고 조용히 파일로 넘어가지 않는다.** 그러면 같은 저장소의 아이디어가 Discussions와 파일 두 곳에 나뉘어 쌓인다.
@@ -52,18 +52,18 @@ Discussions가 정본이다. 파일은 GitHub이 없는 환경에서만 쓴다.
 
 ## 명령
 
-저장소 ID와 카테고리 ID를 먼저 조회한다. `Ideas`는 Discussions를 켜면 기본 생성되므로 만들지 않는다.
+저장소 ID와 카테고리 ID를 먼저 조회한다. `Ideas`는 Discussions를 켜면 기본 생성되므로 만들지 않는다. 조회 결과에 slug `ideas`가 없으면(카테고리를 지웠거나 이름을 바꾼 저장소) 어느 카테고리에 쓸지 사용자에게 묻는다.
 
 ```bash
 gh api graphql -f query='{repository(owner:"OWNER",name:"NAME"){id discussionCategories(first:20){nodes{slug id}}}}' \
   -q '.data.repository | .id, (.discussionCategories.nodes[] | "\(.slug)\t\(.id)")'
 ```
 
-본문은 세션 스크래치패드에 임시 파일로 쓰고 `$(cat ...)`으로 넘긴 뒤, 생성이 끝나면 그 파일을 삭제한다. 인라인 heredoc은 인용 처리가 어긋나 명령이 실패하는 경우가 많다.
+본문은 세션 스크래치패드에 임시 파일로 쓰고 `-F b=@<파일>`로 넘긴다. 스크래치패드는 세션 전용이라 따로 지우지 않는다. 인라인 heredoc은 인용 처리가 어긋나 명령이 실패하는 경우가 많고, `$(cat ...)`은 명령 치환이라 `Bash(gh api:*)` 허용 규칙으로 통과하지 않는다.
 
 ```bash
 gh api graphql -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){createDiscussion(input:{repositoryId:$r,categoryId:$c,title:$t,body:$b}){discussion{number url}}}' \
-  -f r=<repositoryId> -f c=<ideas categoryId> -f t='<제목>' -f b="$(cat <본문파일>)" \
+  -f r=<repositoryId> -f c=<ideas categoryId> -f t='<제목>' -F b=@<본문파일> \
   -q '.data.createDiscussion.discussion | "#\(.number) \(.url)"'
 ```
 
@@ -78,7 +78,7 @@ gh api graphql -f query='mutation($r:ID!,$c:ID!,$t:String!,$b:String!){createDis
 | 삭제 | GitHub UI | Edit |
 | 이슈로 승격 | Discussion 페이지의 Create issue from discussion | 성립하지 않음 |
 
-파일 fallback의 `이슈로 승격`이 비어 있는 것은 누락이 아니다. GitHub이 없는 환경이라 승격할 이슈 자체가 없고, 그 저장소가 나중에 GitHub에 올라가면 Discussions 경로로 넘어간다.
+파일 fallback의 `이슈로 승격`이 비어 있는 것은 누락이 아니다. 변환할 Discussion이 없으므로 GitHub의 변환 기능이 성립하지 않는다. 착수할 것이 되면 `git-issue`로 이슈를 새로 만든다.
 
 조회를 이 도구가 맡지 않는 이유도 같다. 검색 도구가 이미 있는데 명령을 하나 더 만들면 그 명령을 기억해야 한다.
 
