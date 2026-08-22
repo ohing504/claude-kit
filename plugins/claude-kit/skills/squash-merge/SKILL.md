@@ -60,13 +60,18 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 
 **이슈 참조 수집 — commit history 차단의 유일한 예외**
 
-출처는 셋: PR body, PR 제목, 각 commit의 `messageHeadline`+`messageBody`(Step 1의 `commits`). `Close|Closes|Closed|Fix|Fixes|Fixed|Resolve|Resolves|Resolved #N`과 `Refs #N`을 모두 걷는다.
+출처는 셋: PR body, PR 제목, 각 commit의 `messageHeadline`+`messageBody`(Step 1의 `commits`). `(close[sd]?|fix(es|ed)?|resolve[sd]?) #N`과 `Refs #N`을 **대소문자 무시**로 모두 걷는다.
 
 - **이슈 번호마다 키워드를 반복해 한 줄씩.** `Closes #1, #2`는 GitHub가 #1만 닫는다. 타 저장소는 `Closes owner/repo#100`.
 - **중복 제거**: 여러 출처가 같은 이슈를 언급하면(PR body와 commit 양쪽, 또는 commit 여럿) 한 줄로 합친다. 같은 이슈에 닫기 키워드와 `Refs`가 섞여 있으면 닫기 키워드만 남긴다.
 - **키워드 승격 금지**: `Refs #N`만 있던 이슈를 `Closes`로 바꾸지 않는다. 닫을지는 그 이슈의 완료 조건이 정한다.
 - **net diff에서 사라진 작업의 참조는 뺀다**: 중간 commit이 `Closes #7`을 달았어도 그 변경이 PR 안에서 되돌려졌으면 넣지 않는다. net diff 기준은 참조 줄에도 같이 적용된다.
-- **매칭 안 된 `#N` 언급을 침묵으로 버리지 않는다.** 세 출처에서 `#\d+`를 전부 걷어, 참조 줄이 되지 못한 번호(바로 위 규칙으로 의도적으로 뺀 것은 제외)가 남으면 Step 3 출력에 `#N 언급이 있으나 닫기 키워드 없음 — PR 본문이 commit 스킬 규격(말미 Closes #N)을 안 지켰다` 한 줄을 남긴다. `--auto`에서도 출력한다 — 참조 줄이 통째로 빠진 것은 body만 봐서는 눈에 띄지 않는다. 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 GitHub가 인식하는 영문 `Closes #N`으로 적는다.
+- **매칭 안 된 `#N` 언급을 보고한다.** 세 출처에서 `#\d+`를 걷어, 참조 줄이 되지 못한 번호가 남으면 Step 3 출력에 한 줄 남긴다.
+  - 출력 문구: `#N 언급이 <걸린 출처>에 있으나 닫기 키워드 없음 — 이슈면 말미 Closes #N 규격(commit 스킬) 위반, PR 번호 언급이면 무시`
+  - `<걸린 출처>`는 그 번호가 실제로 나온 곳(PR 본문 / PR 제목 / commit message). PR 본문으로 고정해 적지 않는다.
+  - 수집에서 빼는 둘: 코드블록·인용 블록 안의 번호(과거 사례·예시를 옮겨 적은 것), 바로 위 규칙으로 뺀 번호.
+  - `--auto`에서도 출력 — 참조 줄이 통째로 빠진 것은 body만 봐서는 눈에 띄지 않는다.
+  - 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 영문 `Closes #N`.
 
 배치는 bullet과 빈 줄 하나로 띄운 마지막 블록.
 
@@ -82,8 +87,8 @@ Refs #9
 
 **흐름: ① PR(번호·제목) + squash subject/body를 응답 본문에 코드블록으로 출력 → ② confirm.** 확인 없이 merge X (destructive·복구 곤란).
 
-- **subject/body는 본문 텍스트로.** AskUserQuestion `preview` 필드에만 담지 말 것 — preview는 터미널 전용이라 데스크탑·모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
-- confirm 수단은 자유(AskUserQuestion·평문). 내용이 본문에 있으면 매체 무관 표시 — `preview`는 중복일 뿐 유일 표시처 X.
+- **subject/body는 응답 본문 텍스트로 출력한다.** AskUserQuestion `preview`는 터미널 전용이라 데스크탑·모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
+- confirm 수단은 자유(AskUserQuestion·평문). 본문에 내용이 있으면 매체와 무관하게 표시된다.
 - "머지하자" 류 자연어 진입도 raw git/gh 직접 처리 X — 본 흐름(Step 2 포함) 경유.
 
 **`--auto` 지정 시**: ②의 confirm만 생략하고 Step 4로 직행. ①(PR 정보 + subject/body 출력)은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. Step 1의 머지 가능 사전 점검은 `--auto`에서도 동일 적용 — 충돌, 필수 체크 미통과, 초안, base 뒤처짐은 사용자 확인이 아니라 머지 안전성 문제라 옵션으로 우회하지 않는다.
@@ -125,8 +130,6 @@ else
   if [ "$worktree" = "$CURRENT_WT" ] && [ "$CURRENT_WT" != "$MAIN_WT" ]; then
     echo "⏭  현재 작업 중인 linked worktree — 정리는 세션 종료 시 keep/remove 프롬프트에서. remove를 고르면 워크트리와 브랜치 '$HEAD_BRANCH'가 함께 삭제되고, keep이면 둘 다 남는다."
   elif [ "$worktree" = "$CURRENT_WT" ]; then
-    # 메인 워크트리에서 그 브랜치를 체크아웃한 채 머지한 경우.
-    # 워크트리는 그대로 두고 base로 옮긴 뒤 브랜치만 지운다.
     git checkout "$BASE" && git branch -D "$HEAD_BRANCH" \
       || echo "브랜치 '$HEAD_BRANCH' 보존 — $BASE로 checkout 실패 (위 git 출력 확인)"
   else
@@ -140,7 +143,7 @@ else
 fi
 ```
 
-- **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X). 그 프롬프트의 remove는 워크트리 디렉토리와 브랜치를 함께 삭제하므로 여기서 브랜치를 남겨도 스킬 밖에서 정리된다.
+- **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X).
 - **메인 워크트리는 다르다.** 거기서 PR 브랜치를 체크아웃한 채 머지하면 `git worktree list`가 메인 워크트리를 그 브랜치 소유로 보여주지만, 이건 정리를 건너뛸 이유가 아니다 — base로 checkout하면 브랜치를 지울 수 있다. 워크트리 자체는 그대로 둔다.
 - **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단·별도 도구 몫.
 
@@ -172,8 +175,8 @@ fi
 ```
 
 - base는 `main` 고정 X → Step 1의 `baseRefName` 사용(develop 등 비-main 대응).
-- fast-forward 실패 시 보고 후 강제 진행 X. `git pull`은 미커밋 변경이 있으면 실패하므로(전역 `pull.rebase=true`면 rebase 거부), 워크트리가 dirty하면 `git pull`을 돌리지 않는다 — 현재 브랜치가 base가 아니면 checkout 없이 ref만 갱신하고, base 위에 미커밋 변경이 있으면(체크아웃된 브랜치라 fetch도 거부됨) 동기화를 건너뛰고 보고만 한다. 어느 쪽이든 미커밋 변경은 그대로 둔다.
-- linked worktree에선 `git checkout` 강행 X — base가 메인 워크트리에 이미 체크아웃돼 실패.
+- fast-forward 실패 시 보고만, 강제 진행 X. 미커밋 변경은 어느 경로에서도 그대로 둔다.
+- 분기 근거: dirty 워크트리에서 `git pull`은 실패하고(전역 `pull.rebase=true`면 rebase 거부), 체크아웃된 브랜치로는 `git fetch origin <base>:<base>`도 거부된다.
 
 ## Execution
 
