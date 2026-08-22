@@ -8,6 +8,7 @@ allowed-tools: Bash(gh:*), Bash(git:*)
 # Squash Merge
 
 ## Context
+
 - 현재 브랜치: !`git branch --show-current`
 - 인자: `$ARGUMENTS` — `[--auto] [<pr#>|<branch>|<url>]`
 
@@ -25,6 +26,7 @@ PR squash merge → 메시지 정리 → 로컬 정리 한 흐름으로 실행.
 타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
 
 PR 정보 + 변경 사항:
+
 - `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus`
 - `gh pr diff <NUM>` (full net diff)
 
@@ -33,6 +35,7 @@ PR 정보 + 변경 사항:
 PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정리)부터 진행.
 
 **머지 가능 사전 점검**:
+
 - `mergeable == CONFLICTING` 또는 `mergeStateStatus ∈ {DIRTY, BLOCKED, DRAFT, BEHIND}` → 멈추고 사유 보고, 강제 진행 X (충돌·필수 체크 미통과·base 뒤처짐·초안).
 - `UNKNOWN` → 잠시 후 재조회.
 - `UNSTABLE`(일부 체크 실패·진행 중이나 머지 가능) → 경고 후 판단 요청.
@@ -42,6 +45,7 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 **기준**: PR base 대비 head의 **net diff**만 보고 작성 — 중간 commit history 인용 X.
 
 **차단 (session-context bleed)**:
+
 - PR 내 자체 발견 버그·수정 commit
 - 되돌린 작업 (revert·restore)
 - 중간 refactor·rename 후 재변경 흔적
@@ -49,6 +53,7 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - 세션 발화·블로커·디버깅 과정·키 디시전 번호(D-NN) 인용
 
 **형식**:
+
 - subject: `type(scope): summary` — recent commits + CLAUDE.md 컨벤션 일치
 - body: 5줄 이내 bullet — net 변경만, HEREDOC
 - 이슈 참조 줄은 body 맨 끝에 별도 블록으로, bullet 5줄 제한에 포함하지 않는다
@@ -61,10 +66,11 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - **중복 제거**: 여러 출처가 같은 이슈를 언급하면(PR body와 commit 양쪽, 또는 commit 여럿) 한 줄로 합친다. 같은 이슈에 닫기 키워드와 `Refs`가 섞여 있으면 닫기 키워드만 남긴다.
 - **키워드 승격 금지**: `Refs #N`만 있던 이슈를 `Closes`로 바꾸지 않는다. 닫을지는 그 이슈의 완료 조건이 정한다.
 - **net diff에서 사라진 작업의 참조는 뺀다**: 중간 commit이 `Closes #7`을 달았어도 그 변경이 PR 안에서 되돌려졌으면 넣지 않는다. net diff 기준은 참조 줄에도 같이 적용된다.
+- **매칭 안 된 `#N` 언급을 침묵으로 버리지 않는다.** 세 출처에서 `#\d+`를 전부 걷어, 참조 줄이 되지 못한 번호(바로 위 규칙으로 의도적으로 뺀 것은 제외)가 남으면 Step 3 출력에 `#N 언급이 있으나 닫기 키워드 없음 — PR 본문이 commit 스킬 규격(말미 Closes #N)을 안 지켰다` 한 줄을 남긴다. `--auto`에서도 출력한다 — 참조 줄이 통째로 빠진 것은 body만 봐서는 눈에 띄지 않는다. 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 GitHub가 인식하는 영문 `Closes #N`으로 적는다.
 
 배치는 bullet과 빈 줄 하나로 띄운 마지막 블록.
 
-```
+```text
 - <net 변경 bullet>
 
 Closes #12
