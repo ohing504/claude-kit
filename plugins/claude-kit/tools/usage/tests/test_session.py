@@ -2026,39 +2026,71 @@ def test_marks_number_the_stage_boundary_candidates(project: Path) -> None:
         [
             _assistant(_usage(read=100, out=1), "2026-08-20T12:00:00.000Z"),
             _skill_call("demo:stage", "2026-08-20T12:01:00.000Z"),
-            _tool_bash(
-                'uv run --project "/x/tools/alpha" alpha normalize contents/a',
-                "2026-08-20T12:02:00.000Z",
-            ),
             _agent_call(
                 "call-1",
                 "demo:reader-b",
                 "판독 1",
                 _usage(read=100, out=1),
-                "2026-08-20T12:03:00.000Z",
+                "2026-08-20T12:02:00.000Z",
             ),
         ],
     )
     s = read_session(find_transcript("s1", project.parent))
     assert [(m.order, m.name, m.detail) for m in s.marks] == [
         (2, "Skill", "demo:stage"),
-        (3, "Bash", "alpha normalize"),
-        (4, "Agent", "demo:reader-b"),
+        (3, "Agent", "demo:reader-b"),
     ]
 
 
-def test_marks_skip_shell_commands_that_open_no_stage(project: Path) -> None:
-    """Bash 161번이 전부 후보로 나오면 경계를 고를 수 없다 — 저장소 도구를 부른 것만 남긴다."""
+def test_marks_leave_out_shell_calls_unless_a_pattern_is_given(project: Path) -> None:
+    """어느 셸 호출이 단계를 여는지는 저장소마다 다르다 — 도구가 정하면 저장소마다 고쳐야 한다."""
     _write_main(
         project,
         "s1",
         [
             _tool_bash("cat input.md", "2026-08-20T12:00:00.000Z"),
-            _tool_bash("git status", "2026-08-20T12:01:00.000Z"),
+            _tool_bash(
+                'uv run --project "/x/tools/alpha" alpha normalize contents/a',
+                "2026-08-20T12:01:00.000Z",
+            ),
         ],
     )
     s = read_session(find_transcript("s1", project.parent))
     assert s.marks == []
+
+
+def test_marks_bash_pattern_joins_capture_groups_into_the_detail(project: Path) -> None:
+    """패턴을 주면 그 패턴에 맞는 셸 호출만 남고, 잡은 그룹이 이름이 된다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _tool_bash("cat input.md", "2026-08-20T12:00:00.000Z"),
+            _tool_bash(
+                'uv run --project "/x/tools/alpha" alpha normalize contents/a',
+                "2026-08-20T12:01:00.000Z",
+            ),
+        ],
+    )
+    s = read_session(
+        find_transcript("s1", project.parent),
+        marks_bash=r"/tools/[\w-]+\"?\s+([\w-]+)\s+([\w-]+)",
+    )
+    assert [(m.order, m.name, m.detail) for m in s.marks] == [(2, "Bash", "alpha normalize")]
+
+
+def test_marks_bash_pattern_without_groups_keeps_what_it_matched(project: Path) -> None:
+    """그룹을 두지 않은 패턴도 쓸 수 있어야 한다 — 그때는 잡은 문자열이 그대로 이름이 된다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _tool_bash("make deploy", "2026-08-20T12:00:00.000Z"),
+            _tool_bash("cat input.md", "2026-08-20T12:01:00.000Z"),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent), marks_bash=r"make \w+")
+    assert [(m.order, m.name, m.detail) for m in s.marks] == [(1, "Bash", "make deploy")]
 
 
 def test_marks_stay_inside_the_window_but_keep_absolute_numbers(project: Path) -> None:
@@ -2075,5 +2107,9 @@ def test_marks_stay_inside_the_window_but_keep_absolute_numbers(project: Path) -
             ),
         ],
     )
-    s = read_session(find_transcript("s1", project.parent), since=2)
+    s = read_session(
+        find_transcript("s1", project.parent),
+        since=2,
+        marks_bash=r"/tools/[\w-]+\"?\s+([\w-]+)\s+([\w-]+)",
+    )
     assert [(m.order, m.detail) for m in s.marks] == [(3, "beta begin")]

@@ -427,3 +427,15 @@ def test_marks_lists_the_boundary_candidates(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "경계 후보" in out
     assert "demo:writer" in out
+
+
+def test_marks_bash_without_marks_is_rejected(tmp_path: Path, capsys) -> None:
+    """`--marks-bash`만 주면 아무 데도 쓰이지 않아, 준 사람은 낸 줄 알고 넘어간다."""
+    assert main([str(_tiny(tmp_path, "s8")), "--marks-bash", "make \\w+"]) == 1
+    assert "--marks" in capsys.readouterr().err
+
+
+def test_marks_bash_with_a_broken_pattern_is_rejected(tmp_path: Path, capsys) -> None:
+    """정규식을 읽지 못한 채로 돌면 셸 호출이 하나도 없는 것과 같은 출력이 나온다."""
+    assert main([str(_tiny(tmp_path, "s9")), "--marks", "--marks-bash", "make ("]) == 1
+    assert "정규식" in capsys.readouterr().err

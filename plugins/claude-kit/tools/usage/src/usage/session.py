@@ -15,10 +15,6 @@ from pathlib import Path, PurePosixPath
 
 _PROJECTS = Path.home() / ".claude" / "projects"
 _AGENT_ID = re.compile(r"agentId:\s*([0-9a-f]+)")
-# 단계를 여는 셸 명령. `.../tools/<도구>` 경로 뒤에 오는 두 낱말을 도구 이름과 하위 명령으로 쓴다.
-# 저장소가 도구를 `tools/<이름>`에 두고 그 경로로 실행할 때만 잡는다 — 그 배치가 아니면 --marks가
-# Bash 행을 하나도 내지 않는다. 다른 수치에는 관여하지 않는다.
-_TOOL_RUN = re.compile(r"/tools/[\w-]+\"?\s+([\w-]+)\s+([\w-]+)")
 
 # 압축을 컨텍스트 급락으로 찾는 임계값. 비율만 보면 세션 앞머리의 작은 오르내림이 걸리고,
 # 절대 크기만 보면 압축이 걸리지 않는다.
@@ -612,22 +608,19 @@ def _tool_time(
 
 def _covered_minutes(spans: list[tuple[datetime, datetime]], end: datetime | None) -> float:
     """구간들이 덮은 시간의 합. 겹친 자리는 한 번만 세고, `end` 뒤는 세지 않는다."""
-    total = 0.0
-    start = stop = None
+    merged: list[tuple[datetime, datetime]] = []
     for begin, finish in sorted(spans):
         if end is not None:
             if begin >= end:
                 break
             finish = min(finish, end)
-        if stop is None or begin > stop:
-            if stop is not None:
-                total += (stop - start).total_seconds() / 60
-            start, stop = begin, finish
-        elif finish > stop:
-            stop = finish
-    if stop is not None:
-        total += (stop - start).total_seconds() / 60
-    return total
+        if merged and begin <= merged[-1][1]:
+            start, stop = merged[-1]
+            if finish > stop:
+                merged[-1] = (start, finish)
+        else:
+            merged.append((begin, finish))
+    return sum(((stop - start).total_seconds() / 60 for start, stop in merged), 0.0)
 
 
 def _queued_by_hand(row: dict) -> bool:
@@ -825,12 +818,22 @@ def _drop(rows: list[dict], since: int) -> list[dict]:
     return []
 
 
-def _marks(rows: list[dict], start: int = 0) -> list[Mark]:
+def _marks(
+    rows: list[dict], start: int = 0, bash_pattern: re.Pattern[str] | None = None
+) -> list[Mark]:
     """단계를 여는 호출을 요청 번호와 함께 낸다.
 
-    `Skill`과 `Agent`, 그리고 저장소 도구를 부른 `Bash`만 남긴다 — 셸 호출을 전부 내면 한 편에
-    백 건을 넘어 경계를 고를 수 없다. 단계 이름은 붙이지 않는다. 무엇이 어느 단계인지는 채널마다
-    달라, 여기 적으면 채널이 늘 때마다 이 도구를 고쳐야 한다.
+    `Skill`과 `Agent` 호출을 낸다. 이 둘은 Claude Code가 정한 도구 이름이므로 저장소가 무엇이든
+    같은 뜻을 갖는다. 셸 호출은 `bash_pattern`을 받았을 때만, 그 정규식에 맞는 것만 낸다.
+    어느 셸 명령이 단계를 여는지는 저장소마다 다르고, 그 판정을 이 함수에 적으면 저장소가 늘
+    때마다 이 함수를 고쳐야 한다. 셸 호출을 조건 없이 전부 내면 한 세션에 백 건을 넘어 경계를
+    고를 수 없다.
+
+    `bash_pattern`에 잡는 그룹이 있으면 잡은 값을 공백으로 이어 이름으로 쓰고, 그룹이 없으면
+    정규식에 맞은 문자열 전체를 이름으로 쓴다.
+
+    단계 이름은 붙이지 않는다. 무엇이 어느 단계인지는 저장소마다 달라, 여기 적으면 저장소가
+    늘 때마다 이 함수를 고쳐야 한다.
     """
     out: list[Mark] = []
     order = start
@@ -853,10 +856,11 @@ def _marks(rows: list[dict], start: int = 0) -> list[Mark]:
                 out.append(Mark(order, name, str(i_.get("skill") or "")))
             elif name == "Agent":
                 out.append(Mark(order, name, str(i_.get("subagent_type") or "")))
-            elif name == "Bash":
-                found = _TOOL_RUN.search(str(i_.get("command") or ""))
+            elif name == "Bash" and bash_pattern is not None:
+                found = bash_pattern.search(str(i_.get("command") or ""))
                 if found:
-                    out.append(Mark(order, name, f"{found.group(1)} {found.group(2)}"))
+                    caught = [g for g in found.groups() if g]
+                    out.append(Mark(order, name, " ".join(caught) if caught else found.group(0)))
     return out
 
 
@@ -872,8 +876,14 @@ def _compaction_at(requests: list[Request]) -> list[int]:
     return out
 
 
-def read_session(path: Path, until: int | None = None, since: int | None = None) -> Session:
+def read_session(
+    path: Path,
+    until: int | None = None,
+    since: int | None = None,
+    marks_bash: str | None = None,
+) -> Session:
     session_id = path.stem
+    bash_pattern = re.compile(marks_bash) if marks_bash else None
     rows = _rows(path)
     if until is not None:
         rows = _cut(rows, until)
@@ -940,7 +950,7 @@ def read_session(path: Path, until: int | None = None, since: int | None = None)
         len(launches),
         missing,
         _compaction_at(main.requests),
-        _marks(rows, start),
+        _marks(rows, start, bash_pattern),
     )
 
 

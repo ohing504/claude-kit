@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 import unicodedata
 from dataclasses import asdict
@@ -246,7 +247,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="단계 경계 후보를 요청 번호와 함께 낸다. 그 번호를 --from과 --until에 넣는다",
     )
+    p.add_argument(
+        "--marks-bash",
+        metavar="정규식",
+        help="이 정규식에 맞는 Bash 호출도 경계 후보로 낸다. 잡는 그룹이 있으면 잡은 값을"
+        " 공백으로 이어 이름으로 쓰고, 없으면 맞은 문자열 전체를 이름으로 쓴다",
+    )
     args = p.parse_args(argv)
+    if args.marks_bash is not None:
+        if not args.marks:
+            print("--marks-bash는 --marks와 함께 쓴다", file=sys.stderr)
+            return 1
+        try:
+            re.compile(args.marks_bash)
+        except re.error as bad:
+            print(f"--marks-bash의 정규식을 읽지 못했다: {bad}", file=sys.stderr)
+            return 1
     if args.until is not None and args.until < 1:
         print("--until은 1 이상이어야 한다", file=sys.stderr)
         return 1
@@ -271,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             print(e, file=sys.stderr)
             return 1
 
-    s = read_session(path, until=args.until, since=args.since)
+    s = read_session(path, until=args.until, since=args.since, marks_bash=args.marks_bash)
     if args.marks:
         print(_marks_report(s))
     elif args.json:
