@@ -183,6 +183,43 @@ def test_subagents_are_counted_separately(project: Path) -> None:
     assert a.totals.tools == {"Read": 1}
 
 
+def test_workflow_agents_live_one_level_deeper_and_are_counted(project: Path) -> None:
+    """워크플로가 띄운 에이전트는 subagents/ 바로 아래가 아니라 workflows/wf_<id>/ 안에 있다."""
+    _write_main(project, "s1", [_assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z")])
+    wf = project / "s1" / "subagents" / "workflows" / "wf_1234abcd-000"
+    wf.mkdir(parents=True)
+    (wf / "agent-ccc.jsonl").write_text(
+        _row(
+            type="user",
+            agentId="ccc",
+            timestamp="2026-08-20T12:01:00.000Z",
+            message={"role": "user", "content": "일해"},
+        )
+        + _assistant(_usage(read=7000, write=300, out=100), "2026-08-20T12:05:00.000Z"),
+        encoding="utf-8",
+    )
+    (wf / "agent-ccc.meta.json").write_text(
+        json.dumps({"agentType": "worker", "description": "1단계"}), encoding="utf-8"
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert [a.agent_id for a in s.agents] == ["ccc"]
+    assert s.agents[0].totals.cache_read == 7000
+
+
+def test_workflow_journal_is_not_an_agent_transcript(project: Path) -> None:
+    """워크플로 디렉터리의 journal.jsonl은 실행 기록이지 에이전트 세션이 아니다."""
+    _write_main(project, "s1", [_assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z")])
+    wf = project / "s1" / "subagents" / "workflows" / "wf_1234abcd-000"
+    wf.mkdir(parents=True)
+    (wf / "journal.jsonl").write_text(
+        _row(type="started", timestamp="2026-08-20T12:01:00.000Z")
+        + _row(type="result", timestamp="2026-08-20T12:05:00.000Z"),
+        encoding="utf-8",
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert s.agents == []
+
+
 def test_agent_kind_and_order_come_from_the_main_transcript(project: Path) -> None:
     """어느 에이전트였는지는 서브에이전트 파일에 없다 — 메인의 Agent 호출이 그것을 갖는다."""
     launched = (

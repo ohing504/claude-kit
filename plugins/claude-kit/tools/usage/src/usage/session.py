@@ -892,7 +892,8 @@ def read_session(
     start = since - 1 if since else 0
     launches = _launches(rows)
     agents: list[Agent] = []
-    for p in sorted(path.parent.glob(f"{session_id}/subagents/agent-*.jsonl")):
+    # 워크플로가 띄운 에이전트는 subagents/workflows/wf_<id>/ 안에 있다 — 바로 아래만 보면 통째로 빠진다.
+    for p in sorted(path.parent.glob(f"{session_id}/subagents/**/agent-*.jsonl")):
         agent_id = p.stem.removeprefix("agent-")
         parent, depth = "", 1
         if agent_id in launches:
