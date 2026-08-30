@@ -67,11 +67,11 @@ claude plugin install claude-kit@claude-kit
 
 | 도구 | 하는 일 |
 |---|---|
-| **usage** | 세션 하나가 쓴 API 호출 수, 토큰, 소요를 메인과 서브에이전트로 나눠 낸다. 캐시 쓰기는 5분과 1시간 TTL로 가른다 |
+| **usage** | 세션 하나가 쓴 API 호출 수, 토큰, 소요를 메인과 서브에이전트로 나눠 낸다. 캐시 쓰기는 5분과 1시간 TTL로 가른다. `usage index`는 세션 기록 전체를 SQLite 한 파일에 적재한다 |
 
 ```bash
 uv tool install "git+https://github.com/ohing504/claude-kit#subdirectory=plugins/claude-kit/tools/usage"
-usage <세션ID>
+usage session <세션ID>
 ```
 
 이 도구가 내는 모든 수치에는 "세션 기록에 남은 것만"이라는 경계가 붙는다. 세션 기록에 남지 않은 것은 세지 않는다.

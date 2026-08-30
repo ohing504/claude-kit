@@ -1,4 +1,4 @@
-"""세션 하나의 계측 결과를 표로 내거나 JSON으로 낸다."""
+"""세션 하나를 재거나 코퍼스 전체를 데이터베이스에 적재한다."""
 
 import argparse
 import json
@@ -8,6 +8,7 @@ import unicodedata
 from dataclasses import asdict
 from pathlib import Path
 
+from usage.index import index_corpus
 from usage.session import Session, Totals, find_transcript, read_session
 
 
@@ -230,10 +231,25 @@ def _serializable(items: list[tuple[str, object]]) -> dict[str, object]:
     return {k: v for k, v in items if k not in _NOT_IN_JSON}
 
 
+# 인덱스는 저장소 안에 두지 않는다 — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다.
+_DEFAULT_DB = Path.home() / ".claude" / "usage-index.db"
+_DEFAULT_ROOT = Path.home() / ".claude" / "projects"
+
+
+def _add_index(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--db", default=str(_DEFAULT_DB), help=f"데이터베이스 파일 (기본 {_DEFAULT_DB})")
+    p.add_argument(
+        "--root", default=str(_DEFAULT_ROOT), help=f"세션 파일이 든 폴더 (기본 {_DEFAULT_ROOT})"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="usage", description=__doc__)
+    root = argparse.ArgumentParser(prog="usage", description=__doc__)
+    sub = root.add_subparsers(dest="command", required=True)
+    _add_index(sub.add_parser("index", help="코퍼스 전체를 데이터베이스에 적재한다"))
+    p = sub.add_parser("session", help="세션 하나를 잰다")
     p.add_argument("session", help="세션 ID 또는 transcript 파일 경로")
-    p.add_argument("--json", action="store_true", help="원시 수치를 JSON으로 낸다")
+    p.add_argument("--table", action="store_true", help="사람이 읽을 표로 낸다")
     p.add_argument(
         "--until",
         type=int,
@@ -258,7 +274,11 @@ def main(argv: list[str] | None = None) -> int:
         help="이 정규식에 맞는 Bash 호출도 경계 후보로 낸다. 잡는 그룹이 있으면 잡은 값을"
         " 공백으로 이어 이름으로 쓰고, 없으면 맞은 문자열 전체를 이름으로 쓴다",
     )
-    args = p.parse_args(argv)
+    args = root.parse_args(argv)
+    if args.command == "index":
+        report = index_corpus(Path(args.root), Path(args.db))
+        print(json.dumps({"db": args.db, **asdict(report)}, ensure_ascii=False))
+        return 0
     if args.marks_bash is not None:
         if not args.marks:
             print("--marks-bash는 --marks와 함께 쓴다", file=sys.stderr)
@@ -295,7 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     s = read_session(path, until=args.until, since=args.since, marks_bash=args.marks_bash)
     if args.marks:
         print(_marks_report(s))
-    elif args.json:
+    elif args.table:
+        print(_report(s))
+    else:
         out = asdict(s, dict_factory=_serializable) | {
             "path": str(s.path),
             "idle_minutes": s.idle_minutes,
@@ -303,8 +325,6 @@ def main(argv: list[str] | None = None) -> int:
             "combined": asdict(s.combined, dict_factory=_serializable),
         }
         print(json.dumps(out, ensure_ascii=False, indent=2))
-    else:
-        print(_report(s))
     return 0
 
 

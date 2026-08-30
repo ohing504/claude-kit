@@ -1,13 +1,19 @@
-# usage — 세션 하나가 쓴 호출 수와 토큰과 소요
+# usage — 세션이 쓴 호출 수와 토큰과 소요
 
 ```bash
-usage <세션 ID>            # 표로 출력
-usage <transcript 경로>    # 같음
-usage <세션 ID> --json     # 원시 수치 (전후 비교용)
-usage <세션 ID> --until 24 # 24번째 요청까지만
-usage <세션 ID> --marks    # 단계 경계 후보를 요청 번호와 함께
-usage <세션 ID> --from 15 --until 21   # 그 구간만
+usage session <세션 ID>              # 원시 수치를 JSON으로
+usage session <transcript 경로>      # 같음
+usage session <세션 ID> --table      # 사람이 읽을 표로
+usage session <세션 ID> --until 24   # 24번째 요청까지만
+usage session <세션 ID> --marks      # 단계 경계 후보를 요청 번호와 함께
+usage session <세션 ID> --from 15 --until 21   # 그 구간만
+
+usage index                          # 코퍼스 전체를 데이터베이스에 적재
+usage index --db <경로> --root <폴더>
 ```
+
+이 도구를 부르는 쪽은 대부분 스킬을 쓰는 에이전트다. 그래서 `session`의 기본 출력은 JSON이고,
+사람이 읽을 표는 `--table`로 낸다.
 
 세션 ID만 주면 `~/.claude/projects/` 아래 전체에서 찾는다. 세션 파일이 어느 프로젝트 폴더에
 들어가는지는 실행 당시 cwd가 정하므로 저장소 슬러그만 보면 못 찾는다.
@@ -20,9 +26,9 @@ usage <세션 ID> --from 15 --until 21   # 그 구간만
 - 메인과 서브에이전트를 나눈 호출 수와 토큰. 서브에이전트에는 종류와 호출 순서가 붙고, 메인이
   띄운 수보다 적게 찾으면 그 이름이 경고로 나온다. 서브에이전트가 띄운 서브에이전트는 메인의
   Agent 호출에 없어 `agent-<id>.meta.json`에서 종류와 부모를 읽고 부모 순번 뒤에 붙는다.
-  서브에이전트의 transcript 파일은 `--json`의 `agents[].agent_id`로 찾는다 — Agent 도구로
-  띄운 것은 `<세션 ID>/subagents/agent-<agent_id>.jsonl`, teammate로 띄운 것은
-  `<agent_id>.jsonl`이다
+  서브에이전트의 transcript 파일은 출력의 `agents[].agent_id`로 찾는다 — Agent 도구로 띄운
+  것은 `<세션 ID>/subagents/agent-<agent_id>.jsonl`, 워크플로가 띄운 것은 그 아래
+  `workflows/wf_<id>/agent-<agent_id>.jsonl`, teammate로 띄운 것은 `<agent_id>.jsonl`이다
 - `cache write`를 5분과 1시간으로 가른 값, `output` 중 thinking
 - 낸 글자 수 — 답한 행의 `text` 블록과 `tool_use` 입력을 합한 자 수. thinking 블록은 본문이 빈
   채로 저장돼 셀 것이 없다. `output` 뒤의 `?`는 낸 글자와 어긋나는 응답이 그 안에 있어 값이
@@ -53,8 +59,8 @@ Claude Code가 정한 도구 이름이므로 어느 저장소에서 실행한 �
 넘어 경계를 고를 수 없다. 셸 호출이 필요하면 `--marks-bash`에 정규식을 준다.
 
 ```bash
-usage <세션 ID> --marks --marks-bash 'make (\w+)'
-usage <세션 ID> --marks --marks-bash '/tools/[\w-]+"?\s+([\w-]+)\s+([\w-]+)'
+usage session <세션 ID> --marks --marks-bash 'make (\w+)'
+usage session <세션 ID> --marks --marks-bash '/tools/[\w-]+"?\s+([\w-]+)\s+([\w-]+)'
 ```
 
 정규식에 잡는 그룹이 있으면 잡은 값을 공백으로 이어 이름으로 쓰고, 그룹이 없으면 정규식에 맞은
@@ -67,6 +73,25 @@ usage <세션 ID> --marks --marks-bash '/tools/[\w-]+"?\s+([\w-]+)\s+([\w-]+)'
 **필요한 수치가 없으면 스크립트를 짜지 말고 이 도구에 넣는다.** 그 자리에서 짠 스크립트는
 검증되지 않고 저장되지 않아 같은 실수가 세션마다 되풀이된다. 테스트를 먼저 쓰고 여기에 넣는다.
 
+## `usage index`
+
+`~/.claude/projects/` 아래 세션 파일을 전부 훑어 SQLite 한 파일에 적재한다. 세션 하나가 아니라
+코퍼스 전체에서 패턴을 뽑을 때 쓴다. **세션 파일은 읽기만 한다** — 옮기지도 고치지도 않는다.
+
+적재 단위는 요청 하나와 도구 호출 하나다. 세션 집계만 담으면 지표를 새로 만들 때마다 코퍼스를
+다시 전부 읽어야 한다. 테이블은 `sessions`, `agents`, `requests`, `tool_calls` 넷이다. 무엇을
+어느 열에 담는지는 `tests/test_index.py`가 정한다.
+
+크기와 수정 시각이 지난번과 같은 세션은 건너뛴다. 다르면 그 세션의 행을 전부 지우고 파일을
+처음부터 다시 읽는다 — 뒤에 붙은 행만 이어 넣으면 압축 지점과 쉰 구간의 판정이 어긋난다.
+세션 하나가 읽히지 않아도 나머지는 적재하고, 그 세션은 `sessions.status`에 `error`로 남는다.
+
+**셸 명령 원문은 담지 않는다.** API 키와 내부 호스트명이 그대로 들어간다. 파일을 지목한 호출의
+경로만 담는다.
+
+데이터베이스 기본 위치는 `~/.claude/usage-index.db`이고 `--db`로 바꾼다. **저장소 안에 두지
+않는다** — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다.
+
 ## 내지 않는 것
 
 - **금액** — 구독 크레딧으로 실행되므로 API 정가를 곱한 값이 실제 청구와 자릿수가 맞지 않는다
@@ -78,7 +103,7 @@ usage <세션 ID> --marks --marks-bash '/tools/[\w-]+"?\s+([\w-]+)\s+([\w-]+)'
 
 ```bash
 uv tool install "git+https://github.com/ohing504/claude-kit#subdirectory=plugins/claude-kit/tools/usage"
-usage <세션 ID>
+usage session <세션 ID>
 ```
 
 ## 개발

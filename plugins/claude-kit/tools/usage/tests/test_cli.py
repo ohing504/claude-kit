@@ -61,7 +61,7 @@ def transcript(tmp_path: Path) -> Path:
 
 
 def test_report_shows_main_and_subagents_and_ttl(transcript: Path, capsys) -> None:
-    assert main([str(transcript)]) == 0
+    assert main(["session", str(transcript), "--table"]) == 0
     out = capsys.readouterr().out
     assert "메인" in out
     assert "서브 1개" in out
@@ -74,7 +74,7 @@ def test_report_shows_main_and_subagents_and_ttl(transcript: Path, capsys) -> No
 
 def test_json_gives_raw_numbers(transcript: Path, capsys) -> None:
     """단위를 줄인 표는 전후 비교에 쓸 수 없다 — 기계가 읽을 값이 따로 나와야 한다."""
-    assert main([str(transcript), "--json"]) == 0
+    assert main(["session", str(transcript)]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["main"]["cache_read"] == 2_500_000
     assert got["main"]["cache_write_1h"] == 10_000
@@ -109,7 +109,7 @@ def test_report_splits_model_time_from_tool_and_user_wait(tmp_path: Path, capsys
         ),
         encoding="utf-8",
     )
-    assert main([str(p)]) == 0
+    assert main(["session", str(p), "--table"]) == 0
     assert "모델 20.0분, 도구 0.0분, 위임 0.0분, 사용자 대기 60.0분" in capsys.readouterr().out
 
 
@@ -140,14 +140,14 @@ def test_json_carries_idle_and_working(tmp_path: Path, capsys) -> None:
         ),
         encoding="utf-8",
     )
-    assert main([str(p), "--json"]) == 0
+    assert main(["session", str(p)]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["idle_minutes"] == 30.0
     assert got["working_minutes"] == 10.0
 
 
 def test_unknown_session_reports_and_fails(tmp_path: Path, capsys) -> None:
-    assert main([str(tmp_path / "없는파일.jsonl")]) == 1
+    assert main(["session", str(tmp_path / "없는파일.jsonl")]) == 1
     assert "찾지 못했다" in capsys.readouterr().err
 
 
@@ -161,7 +161,7 @@ def test_until_below_one_is_rejected(tmp_path: Path, capsys) -> None:
         ),
         encoding="utf-8",
     )
-    assert main([str(p), "--until", "0"]) == 1
+    assert main(["session", str(p), "--until", "0"]) == 1
     assert "1 이상" in capsys.readouterr().err
 
 
@@ -194,7 +194,7 @@ def test_json_survives_a_finished_tool_call(tmp_path: Path, capsys) -> None:
         ),
         encoding="utf-8",
     )
-    assert main([str(p), "--json"]) == 0
+    assert main(["session", str(p)]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["main"]["tool_minutes"] == pytest.approx(5.0)
 
@@ -217,7 +217,7 @@ def test_report_shows_produced_chars_and_marks_unreliable_output(tmp_path: Path,
         ),
         encoding="utf-8",
     )
-    assert main([str(p)]) == 0
+    assert main(["session", str(p), "--table"]) == 0
     out = capsys.readouterr().out
     assert "낸 글자" in out
     assert "5.0k" in out
@@ -225,7 +225,7 @@ def test_report_shows_produced_chars_and_marks_unreliable_output(tmp_path: Path,
 
 
 def test_json_carries_produced_chars_for_agents(transcript: Path, capsys) -> None:
-    assert main([str(transcript), "--json"]) == 0
+    assert main(["session", str(transcript)]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["main"]["produced_chars"] == len("{}")
     assert got["agents"][0]["totals"]["produced_chars"] == 0
@@ -235,7 +235,7 @@ def test_report_shows_the_prompt_size_and_model_on_the_subagent_row(
     transcript: Path, capsys
 ) -> None:
     """어느 담당에 무엇을 얼마나 실어 어느 모델로 돌렸는지는 행마다 있어야 담당끼리 견준다."""
-    assert main([str(transcript)]) == 0
+    assert main(["session", str(transcript), "--table"]) == 0
     out = capsys.readouterr().out
     row = next(line for line in out.splitlines() if "agent-zzz" in line or "sonnet-5" in line)
     assert "sonnet-5" in row
@@ -328,7 +328,7 @@ def _image_transcript(tmp_path: Path) -> Path:
 
 def test_report_shows_images_on_the_subagent_row(tmp_path: Path, capsys) -> None:
     """배치마다 몇 장을 열었는지는 서브에이전트 행에 있어야 배치별로 읽힌다."""
-    assert main([str(_image_transcript(tmp_path))]) == 0
+    assert main(["session", str(_image_transcript(tmp_path)), "--table"]) == 0
     out = capsys.readouterr().out
     row = next(line for line in out.splitlines() if "reader" in line)
     assert "1장" in row
@@ -336,7 +336,7 @@ def test_report_shows_images_on_the_subagent_row(tmp_path: Path, capsys) -> None
 
 
 def test_json_carries_images_for_agents(tmp_path: Path, capsys) -> None:
-    assert main([str(_image_transcript(tmp_path)), "--json"]) == 0
+    assert main(["session", str(_image_transcript(tmp_path))]) == 0
     got = json.loads(capsys.readouterr().out)
     assert got["agents"][0]["totals"]["images"] == 1
     assert got["agents"][0]["totals"]["image_tokens"] == 72 * 54
@@ -371,7 +371,7 @@ def _fanout_transcript(tmp_path: Path) -> Path:
 
 
 def test_report_shows_how_many_tools_each_request_carried(tmp_path: Path, capsys) -> None:
-    assert main([str(_fanout_transcript(tmp_path))]) == 0
+    assert main(["session", str(_fanout_transcript(tmp_path)), "--table"]) == 0
     out = capsys.readouterr().out
     line = next(line for line in out.splitlines() if line.startswith("도구 담기 (메인)"))
     assert "1개 1, 2개 1, 3개 1" in line
@@ -379,7 +379,7 @@ def test_report_shows_how_many_tools_each_request_carried(tmp_path: Path, capsys
 
 
 def test_json_carries_the_tool_count_per_request(tmp_path: Path, capsys) -> None:
-    assert main([str(_fanout_transcript(tmp_path)), "--json"]) == 0
+    assert main(["session", str(_fanout_transcript(tmp_path))]) == 0
     got = json.loads(capsys.readouterr().out)
     fan = got["main"]["tools_per_request"]
     assert fan["spread"] == {"1": 1, "2": 1, "3": 1}
@@ -412,18 +412,18 @@ def _tiny(tmp_path: Path, name: str) -> Path:
 
 
 def test_from_below_one_is_rejected(tmp_path: Path, capsys) -> None:
-    assert main([str(_tiny(tmp_path, "s5")), "--from", "0"]) == 1
+    assert main(["session", str(_tiny(tmp_path, "s5")), "--from", "0"]) == 1
     assert "1 이상" in capsys.readouterr().err
 
 
 def test_from_after_until_is_rejected(tmp_path: Path, capsys) -> None:
     """빈 구간을 재면 0이 나오고, 0이 개선의 근거로 읽힌다."""
-    assert main([str(_tiny(tmp_path, "s6")), "--from", "5", "--until", "3"]) == 1
+    assert main(["session", str(_tiny(tmp_path, "s6")), "--from", "5", "--until", "3"]) == 1
     assert "--from" in capsys.readouterr().err
 
 
 def test_marks_lists_the_boundary_candidates(tmp_path: Path, capsys) -> None:
-    assert main([str(_tiny(tmp_path, "s7")), "--marks"]) == 0
+    assert main(["session", str(_tiny(tmp_path, "s7")), "--marks"]) == 0
     out = capsys.readouterr().out
     assert "경계 후보" in out
     assert "demo:writer" in out
@@ -431,11 +431,46 @@ def test_marks_lists_the_boundary_candidates(tmp_path: Path, capsys) -> None:
 
 def test_marks_bash_without_marks_is_rejected(tmp_path: Path, capsys) -> None:
     """`--marks-bash`만 주면 아무 데도 쓰이지 않아, 준 사람은 낸 줄 알고 넘어간다."""
-    assert main([str(_tiny(tmp_path, "s8")), "--marks-bash", "make \\w+"]) == 1
+    assert main(["session", str(_tiny(tmp_path, "s8")), "--marks-bash", "make \\w+"]) == 1
     assert "--marks" in capsys.readouterr().err
 
 
 def test_marks_bash_with_a_broken_pattern_is_rejected(tmp_path: Path, capsys) -> None:
     """정규식을 읽지 못한 채로 돌면 셸 호출이 하나도 없는 것과 같은 출력이 나온다."""
-    assert main([str(_tiny(tmp_path, "s9")), "--marks", "--marks-bash", "make ("]) == 1
+    assert main(["session", str(_tiny(tmp_path, "s9")), "--marks", "--marks-bash", "make ("]) == 1
     assert "정규식" in capsys.readouterr().err
+
+
+def test_the_default_output_is_the_one_agents_parse(transcript: Path, capsys) -> None:
+    """이 도구를 부르는 쪽은 대부분 에이전트다 — 사람이 읽을 표를 기본으로 두면 매번 옵션을 붙여야 한다."""
+    assert main(["session", str(transcript)]) == 0
+    assert json.loads(capsys.readouterr().out)["main"]["cache_read"] == 2_500_000
+
+
+def test_index_builds_the_database_at_the_given_path(tmp_path: Path, capsys) -> None:
+    """인덱스는 저장소 밖에 둔다 — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다."""
+    root = tmp_path / "projects" / "-Users-x-repo"
+    root.mkdir(parents=True)
+    (root / "s1.jsonl").write_text(
+        _line(
+            type="assistant",
+            timestamp="2026-08-20T12:00:00.000Z",
+            message={
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "usage": {"output_tokens": 10, "cache_read_input_tokens": 100},
+                "content": [],
+            },
+        ),
+        encoding="utf-8",
+    )
+    db = tmp_path / "index.db"
+    assert main(["index", "--root", str(tmp_path / "projects"), "--db", str(db)]) == 0
+    assert db.is_file()
+    assert json.loads(capsys.readouterr().out) == {
+        "db": str(db),
+        "indexed": 1,
+        "skipped": 0,
+        "empty": 0,
+        "failed": 0,
+    }
