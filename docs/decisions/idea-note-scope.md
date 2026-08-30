@@ -14,11 +14,13 @@
 
 ```check
 {"checks": [
-  {"cmd": "grep -c 'has_discussions' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "2"},
-  {"cmd": "grep -c '추가 하나' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"},
-  {"cmd": "grep -c '우선순위는 기록하지 않고' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"}
+  {"cmd": "grep -c '^allowed-tools: Bash(gh repo view:\\*), Bash(gh api:\\*), Read, Write, Edit, AskUserQuestion$' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"}
 ]}
 ```
+
+`allowed-tools`는 스킬이 실행할 수 있는 명령의 상한이다. 여기에 없는 명령은 스킬이 부를 수 없으므로, 이 한 줄이 "동작은 추가 하나"와 "알림과 정기 리뷰를 붙이지 않는다"를 실제로 강제한다. 조회, 삭제, 이슈 승격, 스케줄 등록을 넣으려면 이 줄을 먼저 늘려야 하고 그때 이 검사가 실패한다.
+
+나머지 결정 항목은 기계로 판정할 수 없다. `SKILL.md`는 LLM에게 주는 지시문이고, 지시가 지켜지는지는 스킬을 실행해야 안다. 문구를 `grep`으로 세는 검사는 그 문구가 있는지만 보고 결정이 반영됐는지는 보지 못하므로 두지 않는다.
 
 ## 근거
 

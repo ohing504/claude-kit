@@ -14,11 +14,11 @@
 
 ```check
 {"checks": [
-  {"cmd": "grep -c '이슈 참조 수집' plugins/claude-kit/skills/squash-merge/SKILL.md", "expect": "1"},
-  {"cmd": "grep -c '매칭 안 된' plugins/claude-kit/skills/squash-merge/SKILL.md", "expect": "1"},
   {"cmd": "git grep -l '기본 브랜치를 타겟할 때만' -- ':!docs/decisions' | wc -l | tr -d ' '", "expect": "0"}
 ]}
 ```
+
+기각한 안이 스킬에 다시 들어왔는지 보는 부재 검사다. 결정 항목 쪽은 기계로 판정할 수 없다 — `SKILL.md`는 LLM에게 주는 지시문이라 지시가 지켜지는지는 실행해야 안다. 문구를 `grep`으로 세는 검사는 그 문구가 있는지만 보고 결정이 반영됐는지는 보지 못하므로 두지 않는다.
 
 ## 근거
 
