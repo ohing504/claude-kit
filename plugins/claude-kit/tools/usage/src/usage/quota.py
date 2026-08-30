@@ -62,7 +62,7 @@ def parse_payload(data: dict, now: datetime) -> Observation | None:
     return Observation(
         session_id=session_id,
         windows=windows,
-        observed_at=now.astimezone(UTC).isoformat(timespec="seconds"),
+        observed_at=now.astimezone(UTC).isoformat(timespec="microseconds"),
         input_tokens=usage.get("input_tokens"),
         output_tokens=usage.get("output_tokens"),
         cache_read_tokens=usage.get("cache_read_input_tokens"),
@@ -280,7 +280,12 @@ def run_collect(db_path: Path, child_cmd: Sequence[str] | None) -> int:
     collect(payload, db_path)
     if not child_cmd:
         return 0
-    proc = subprocess.run(list(child_cmd), input=payload, capture_output=True)
+    try:
+        proc = subprocess.run(list(child_cmd), input=payload, capture_output=True)
+    except OSError as e:
+        # 표본은 이미 남았다 — 여기서 죽으면 statusLine 화면이 사라져 표본 하나보다 비싸다
+        print(f"자식 커맨드를 실행하지 못했다: {e}", file=sys.stderr)
+        return 1
     sys.stdout.buffer.write(proc.stdout)
     sys.stdout.buffer.flush()
     sys.stderr.buffer.write(proc.stderr)
