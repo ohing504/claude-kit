@@ -15,6 +15,9 @@
 - **도구 안의 파일은 저장소 문서를 링크하거나 경로로 가리키지 않는다** — 이 도구는 `uv tool install`로 저장소 밖에 설치돼 실행되므로, 설치된 사본에서 `docs/`와 `.claude/`의 경로가 존재하지 않는다.
 - **`pytest`, `ruff check`, `ruff format --check`, `ty check` 넷 다 통과해야 한다** — `ty check`의 진단 0건도 통과 조건이다.
 - **저장소마다 다른 판정은 도구에 넣지 않고 옵션 인자로 받는다** — `--marks`가 기본으로 내는 `Skill`과 `Agent`는 Claude Code가 정한 도구 이름이라 어느 저장소의 세션에서든 같은 뜻을 갖는다. 어느 셸 명령이 단계를 여는지는 저장소마다 다르므로 `--marks-bash`에 정규식을 받아 판정한다.
+- **잔존 비용은 압축에서 끊는다** — 압축 경계에서 그때까지 살아 있던 항목을 전부 닫고, 그 자리에 크기 `context_tokens(경계)`인 `compaction` 항목 하나를 새로 연다. 압축 앞뒤를 하나의 구간으로 이으면 압축이 실제로 지운 컨텍스트의 잔존이 사라진다.
+- **잔존 비용의 스코프는 `(session_id, agent_id)`로 서브에이전트마다 독립이다** — 서브에이전트가 쓴 것은 부모 스코프의 원장에 합산하지 않는다. 부모가 지불한 것은 `Agent` 도구 호출이 낸 보고서의 잔존뿐이다.
+- **`base` 항목(요청 1의 컨텍스트)은 분해하지 않는다** — 시스템 프롬프트, 지침, 메모리가 뭉쳐 있고 세션 기록에 그 내부 구성이 안 남아 쪼갤 근거가 없다. 잔존 계산 규칙의 정본은 `tests/test_residual.py`다.
 
 ## 확인
 
@@ -23,7 +26,7 @@
   {"cmd": "[ \"$(grep -oE '^version *= *\\\"[^\\\"]+\\\"' plugins/claude-kit/tools/usage/pyproject.toml | grep -oE '[0-9][^\\\"]*')\" = \"$(grep -A1 'name = \\\"usage\\\"' plugins/claude-kit/tools/usage/uv.lock | grep -oE '\\\"[0-9][^\\\"]*\\\"' | tr -d '\\\"')\" ] && echo same || echo differ", "expect": "same"},
   {"cmd": "grep -rIniE 'oh-my-creator|minju|ojju|studios|PERSONA|naver-blog' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
   {"cmd": "grep -rInE 'docs/decisions|[.]claude/(rules|skills|agents)|claude-kit/docs' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
-  {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "10"},
+  {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "14"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync pytest -q >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ruff check . >/dev/null 2>&1 && uv run --directory plugins/claude-kit/tools/usage --no-sync ruff format --check . >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ty check >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"}

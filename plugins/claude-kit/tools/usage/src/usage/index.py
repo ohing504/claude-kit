@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS requests (
   cache_read_tokens      INTEGER NOT NULL,
   cache_write_tokens     INTEGER NOT NULL,
   output_tokens          INTEGER NOT NULL,
+  thinking_tokens        INTEGER NOT NULL,
   produced_chars         INTEGER NOT NULL,
   context_tokens         INTEGER NOT NULL,
   is_compaction_boundary INTEGER NOT NULL
@@ -62,14 +63,21 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   order_in_scope INTEGER NOT NULL,
   tool_name      TEXT NOT NULL,
   file_path      TEXT NOT NULL,
+  target         TEXT NOT NULL,
   result_chars   INTEGER NOT NULL,
   minutes        REAL NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
+CREATE INDEX IF NOT EXISTS idx_requests_scope ON requests(session_id, agent_id, order_in_scope);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_file ON tool_calls(file_path);
 """
+
+# 스키마를 바꿀 때마다 올린다. 저장된 값과 다르면 네 테이블을 지우고 다시 만들어 옛 스키마의
+# 행(새 열이 없거나 채워지지 않은 행)이 조용히 섞이는 것을 막는다 — `_unchanged()`는 크기와
+# 시각만 보므로 열만 추가해서는 기존 행이 갱신되지 않는다.
+_SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -91,7 +99,13 @@ _COMMIT_EVERY = 200
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
+    current = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current != _SCHEMA_VERSION:
+        for table in ("sessions", "agents", "requests", "tool_calls"):
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
+        conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
     conn.executescript(_SCHEMA)
+    conn.commit()
     return conn
 
 
@@ -110,9 +124,9 @@ def _put_totals(
 ) -> None:
     conn.executemany(
         "INSERT INTO requests (session_id, agent_id, order_in_scope, timestamp, model,"
-        " input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, produced_chars,"
-        " context_tokens, is_compaction_boundary)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,"
+        " produced_chars, context_tokens, is_compaction_boundary)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 session_id,
@@ -124,6 +138,7 @@ def _put_totals(
                 r.cache_read,
                 r.cache_write,
                 r.output,
+                r.thinking,
                 r.produced_chars,
                 r.context,
                 int(r.order in boundaries),
@@ -133,9 +148,9 @@ def _put_totals(
     )
     conn.executemany(
         "INSERT INTO tool_calls (session_id, agent_id, order_in_scope, tool_name, file_path,"
-        " result_chars, minutes) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " target, result_chars, minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (session_id, agent_id, c.order, c.name, c.path, c.result_chars, c.minutes)
+            (session_id, agent_id, c.order, c.name, c.path, c.target, c.result_chars, c.minutes)
             for c in totals.tool_calls
         ],
     )

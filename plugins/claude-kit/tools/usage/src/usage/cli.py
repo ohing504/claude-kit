@@ -1,13 +1,17 @@
-"""세션 하나를 재거나 코퍼스 전체를 데이터베이스에 적재한다."""
+"""세션 하나를 재거나 코퍼스 전체를 데이터베이스에 적재하거나 코퍼스에서 잔존 비용 순위를 뽑는다."""
 
 import argparse
 import json
 import re
+import sqlite3
 import sys
 import unicodedata
+from contextlib import closing
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
+from usage.corpus import BY_CHOICES, CheckResult, check, report
 from usage.index import index_corpus
 from usage.session import Session, Totals, find_transcript, read_session
 
@@ -236,17 +240,97 @@ _DEFAULT_DB = Path.home() / ".claude" / "usage-index.db"
 _DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 
 
-def _add_index(p: argparse.ArgumentParser) -> None:
+def _add_db(p: argparse.ArgumentParser) -> None:
     p.add_argument("--db", default=str(_DEFAULT_DB), help=f"데이터베이스 파일 (기본 {_DEFAULT_DB})")
+
+
+def _add_index(p: argparse.ArgumentParser) -> None:
+    _add_db(p)
     p.add_argument(
         "--root", default=str(_DEFAULT_ROOT), help=f"세션 파일이 든 폴더 (기본 {_DEFAULT_ROOT})"
     )
+
+
+def _add_corpus(p: argparse.ArgumentParser) -> None:
+    _add_db(p)
+    p.add_argument(
+        "--by", choices=BY_CHOICES, help="이 축으로 접어 순위를 낸다. 없으면 축마다 요약을 낸다"
+    )
+    p.add_argument(
+        "--top", type=int, default=20, metavar="N", help="축마다 상위 N개만 낸다 (기본 20)"
+    )
+    p.add_argument("--since", metavar="YYYY-MM-DD", help="이 날짜의 세션부터 센다")
+    p.add_argument("--until", metavar="YYYY-MM-DD", help="이 날짜의 세션까지만 센다")
+    p.add_argument("--project", metavar="슬러그", help="이 프로젝트의 세션만 센다")
+    p.add_argument(
+        "--group-by",
+        choices=("first-skill", "agent-kind", "project"),
+        help="--by spread와 함께 쓴다. 기본 project",
+    )
+    p.add_argument("--table", action="store_true", help="사람이 읽을 표로 낸다")
+    p.add_argument(
+        "--check",
+        action="store_true",
+        help="항등식 위반을 찾는다. 위반이 있으면 종료 코드가 0이 아니다",
+    )
+
+
+def _check_dict(r: CheckResult) -> dict[str, object]:
+    return {
+        "ok": r.ok,
+        "scopes": r.scopes,
+        "eviction_events": r.eviction_events,
+        "unattributed_residual": r.unattributed_residual,
+        "total_residual": r.total_residual,
+        "thinking_residual_as_kept": r.thinking_residual_as_kept,
+        "thinking_residual_as_stripped": r.thinking_residual_as_stripped,
+        "violations": r.violations,
+    }
+
+
+def _check_report(r: CheckResult) -> str:
+    lines = [
+        f"스코프 {r.scopes}개, 위반 {len(r.violations)}건",
+        f"잔존 총합 {_n(r.total_residual)}, 퇴장 {r.eviction_events}건,"
+        f" unattributed {_n(r.unattributed_residual)}",
+        f"thinking 가설 오차  남는다 {_n(r.thinking_residual_as_kept)},"
+        f" 벗겨진다 {_n(r.thinking_residual_as_stripped)} (작은 쪽이 맞는 가설)",
+    ]
+    for v in r.violations:
+        scope = f"{v['session_id']}" + (f"/{v['agent_id']}" if v["agent_id"] else "")
+        lines.append(f"  {scope}: expected={v['expected']} got={v['got']}")
+    return "\n".join(lines)
+
+
+def _corpus_row(row: dict[str, Any]) -> str:
+    if "kind" in row:  # --by agent
+        return (
+            f"{_pad(str(row['kind']), 24)} {_pad(_n(int(row['paid_by_parent'])), 10, True)}"
+            f" {_pad(_n(int(row['spent_by_self'])), 10, True)} calls={row['calls']} scopes={row['scopes']}"
+        )
+    example = row.get("example")
+    where = f"{example['session_id']}#{example['order']}" if example else ""
+    return (
+        f"{_pad(str(row['key']), 24)} {_pad(_n(int(row['residual'])), 10, True)}"
+        f" size={_n(int(row['size']))} count={row['count']} sessions={row['sessions']} {where}"
+    )
+
+
+def _corpus_report(data: dict[str, object]) -> str:
+    lines = []
+    for axis, rows in data.items():
+        if not isinstance(rows, list):
+            continue
+        lines.append(f"== {axis} ==")
+        lines.extend(_corpus_row(row) for row in rows)
+    return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     root = argparse.ArgumentParser(prog="usage", description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
     _add_index(sub.add_parser("index", help="코퍼스 전체를 데이터베이스에 적재한다"))
+    _add_corpus(sub.add_parser("corpus", help="코퍼스에서 잔존 비용 순위를 뽑는다"))
     p = sub.add_parser("session", help="세션 하나를 잰다")
     p.add_argument("session", help="세션 ID 또는 transcript 파일 경로")
     p.add_argument("--table", action="store_true", help="사람이 읽을 표로 낸다")
@@ -276,8 +360,36 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = root.parse_args(argv)
     if args.command == "index":
-        report = index_corpus(Path(args.root), Path(args.db))
-        print(json.dumps({"db": args.db, **asdict(report)}, ensure_ascii=False))
+        idx_report = index_corpus(Path(args.root), Path(args.db))
+        print(json.dumps({"db": args.db, **asdict(idx_report)}, ensure_ascii=False))
+        return 0
+    if args.command == "corpus":
+        if args.group_by is not None and args.by != "spread":
+            print("--group-by는 --by spread와 함께 쓴다", file=sys.stderr)
+            return 1
+        with closing(sqlite3.connect(args.db)) as conn:
+            if args.check:
+                result = check(conn)
+                print(
+                    _check_report(result)
+                    if args.table
+                    else json.dumps(_check_dict(result), ensure_ascii=False)
+                )
+                return 0 if result.ok else 1
+            data = report(
+                args.by,
+                conn,
+                since=args.since,
+                until=args.until,
+                project=args.project,
+                group_by=args.group_by,
+            )
+        trimmed = {k: (v[: args.top] if isinstance(v, list) else v) for k, v in data.items()}
+        print(
+            _corpus_report(trimmed)
+            if args.table
+            else json.dumps(trimmed, ensure_ascii=False, indent=2)
+        )
         return 0
     if args.marks_bash is not None:
         if not args.marks:
