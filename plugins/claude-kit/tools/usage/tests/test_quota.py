@@ -383,3 +383,81 @@ def test_a_broken_payload_does_not_break_the_pass_through(tmp_path: Path, capsys
     assert code == 0
     assert capsysbinary.readouterr().out == payload
     assert not db.exists() or _query(db, "SELECT COUNT(*) FROM quota_observations") == [(0,)]
+
+
+def test_an_unrunnable_child_command_does_not_crash(tmp_path: Path) -> None:
+    """자식 커맨드가 실행조차 안 되면(오탈자, 권한 없음) 표본은 이미 남았으니 예외로 죽지 않는다."""
+    db = tmp_path / "quota.db"
+    payload = json.dumps(_payload(five_hour=_window(10, 100))).encode()
+    import io
+
+    import usage.cli as cli_mod
+
+    class _Stdin:
+        buffer = io.BytesIO(payload)
+
+    orig_stdin = cli_mod.sys.stdin
+    cli_mod.sys.stdin = _Stdin()
+    try:
+        code = main(["quota", "--db", str(db), "--collect", "--", "/no/such/binary-xyz"])
+    finally:
+        cli_mod.sys.stdin = orig_stdin
+    assert code == 1
+    assert _query(db, "SELECT session_id FROM quota_observations") == [("s1",)]
+
+
+def test_observations_within_the_same_second_do_not_collide(tmp_path: Path) -> None:
+    """statusLine의 300ms 디바운스로 같은 초에 서로 다른 표본이 올 수 있다 — 마이크로초까지 담아 구분한다."""
+    db = tmp_path / "quota.db"
+    first = parse_payload(
+        _payload(five_hour=_window(10, 100)), datetime(2026, 8, 30, 12, 0, 0, 100000, tzinfo=UTC)
+    )
+    second = parse_payload(
+        _payload(five_hour=_window(20, 100)), datetime(2026, 8, 30, 12, 0, 0, 900000, tzinfo=UTC)
+    )
+    assert first is not None and second is not None
+    assert record(first, db) is True
+    assert record(second, db) is True
+    assert _query(db, "SELECT COUNT(*) FROM quota_observations") == [(2,)]
+
+
+def test_the_child_commands_own_project_flag_is_not_merged_by_normalize(tmp_path: Path) -> None:
+    """`--project`를 argparse가 보기 전에 합치는 정규화는 `--` 뒤 자식 커맨드에는 적용되면 안 된다."""
+    db = tmp_path / "quota.db"
+    payload = json.dumps(_payload(five_hour=_window(10, 100))).encode()
+    import io
+
+    import usage.cli as cli_mod
+
+    class _Stdin:
+        buffer = io.BytesIO(payload)
+
+    orig_stdin = cli_mod.sys.stdin
+    cli_mod.sys.stdin = _Stdin()
+    try:
+        code = main(
+            [
+                "quota",
+                "--db",
+                str(db),
+                "--collect",
+                "--",
+                "python3",
+                "-c",
+                "import sys; sys.exit(0)",
+                "--project",
+                "foo",
+            ]
+        )
+    finally:
+        cli_mod.sys.stdin = orig_stdin
+    assert code == 0
+
+
+def test_session_range_is_validated_the_same_way_as_the_session_command(tmp_path: Path) -> None:
+    """`quota --session`도 `session`과 같은 `--from`/`--until` 범위 검증을 받는다."""
+    db = tmp_path / "quota.db"
+    code = main(
+        ["quota", "--db", str(db), "--session", "deadbeef-0001", "--from", "50", "--until", "5"]
+    )
+    assert code == 1

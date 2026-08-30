@@ -428,9 +428,20 @@ def _split_dashdash(argv: list[str]) -> tuple[list[str], list[str] | None]:
     return argv, None
 
 
+def _validate_request_range(since: int | None, until: int | None) -> str | None:
+    """`--from`/`--until`이 말이 되는 범위인지 본다. 문제가 있으면 에러 문구를 낸다."""
+    if until is not None and until < 1:
+        return "--until은 1 이상이어야 한다"
+    if since is not None and since < 1:
+        return "--from은 1 이상이어야 한다"
+    if since is not None and until is not None and since > until:
+        return "--from이 --until보다 크면 잴 요청이 없다"
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
-    argv = _normalize_project_arg(sys.argv[1:] if argv is None else argv)
-    argv, child_cmd = _split_dashdash(argv)
+    argv, child_cmd = _split_dashdash(sys.argv[1:] if argv is None else argv)
+    argv = _normalize_project_arg(argv)
     root = argparse.ArgumentParser(prog="usage", description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
     _add_index(sub.add_parser("index", help="코퍼스 전체를 데이터베이스에 적재한다"))
@@ -492,6 +503,10 @@ def main(argv: list[str] | None = None) -> int:
         if not args.session:
             print("--collect 또는 --session이 필요하다", file=sys.stderr)
             return 1
+        range_error = _validate_request_range(args.since, args.until)
+        if range_error is not None:
+            print(range_error, file=sys.stderr)
+            return 1
         try:
             path = _resolve_transcript(args.session)
         except FileNotFoundError as e:
@@ -548,14 +563,9 @@ def main(argv: list[str] | None = None) -> int:
         except re.error as bad:
             print(f"--marks-bash의 정규식을 읽지 못했다: {bad}", file=sys.stderr)
             return 1
-    if args.until is not None and args.until < 1:
-        print("--until은 1 이상이어야 한다", file=sys.stderr)
-        return 1
-    if args.since is not None and args.since < 1:
-        print("--from은 1 이상이어야 한다", file=sys.stderr)
-        return 1
-    if args.since is not None and args.until is not None and args.since > args.until:
-        print("--from이 --until보다 크면 잴 요청이 없다", file=sys.stderr)
+    range_error = _validate_request_range(args.since, args.until)
+    if range_error is not None:
+        print(range_error, file=sys.stderr)
         return 1
 
     try:
