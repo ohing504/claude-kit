@@ -61,9 +61,35 @@ claude plugin install claude-kit@claude-kit
 | **git-issue** | 이슈 제목, 본문, 라벨 규격(제목은 증상 서술문, 본문 4블록) + 생성 시점 가드 hook |
 | **squash-merge** | PR squash merge + 메시지 정리 + 로컬 정리·main 동기화 |
 
+## 도구
+
+스킬과 별개로, 명령줄에서 직접 실행하는 도구다.
+
+| 도구 | 하는 일 |
+|---|---|
+| **usage** | 세션 하나가 쓴 API 호출 수, 토큰, 소요를 메인과 서브에이전트로 나눠 낸다. 캐시 쓰기는 5분과 1시간 TTL로 가른다 |
+
+```bash
+uv tool install "git+https://github.com/ohing504/claude-kit#subdirectory=plugins/claude-kit/tools/usage"
+usage <세션ID>
+```
+
+이 도구가 내는 모든 수치에는 "세션 기록에 남은 것만"이라는 경계가 붙는다. 세션 기록에 남지 않은 것은 세지 않는다.
+
+상세는 [`plugins/claude-kit/tools/usage/README.md`](plugins/claude-kit/tools/usage/README.md).
+
+## 개발용 검사
+
+hook 스크립트의 테스트다. usage 도구의 검사 명령은 [그 README](plugins/claude-kit/tools/usage/README.md)에 있다.
+
+```bash
+python3 plugins/claude-kit/hooks/tests/test_issue_guard.py
+python3 plugins/claude-kit/hooks/tests/test_squash_merge_guard.py
+```
+
 ## 사용 예시
 
-```
+```text
 이 선택지들 한눈에 비교하게 그려줘        → whiteboard
 이 CLAUDE.md AI가 읽기 좋게 다이어트해줘   → ai-doc-improver
 이거 시킬 프롬프트 짜줘                   → prompt-forge

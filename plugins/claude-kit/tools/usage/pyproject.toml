@@ -1,0 +1,54 @@
+[project]
+name = "usage"
+version = "0.7.0"
+description = "세션 transcript에서 API 호출 수와 토큰과 소요를 센다 — 메인과 서브에이전트를 따로"
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+usage = "usage.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=9.0.3", "ruff>=0.9", "ty>=0.0.1a1"]
+
+[tool.ruff]
+# 이 파일에 [project]가 없어 requires-python에서 추론되지 않는다. 전 멤버가 >=3.13이다.
+target-version = "py313"
+line-length = 100
+extend-exclude = ["**/__pycache__", ".venv"]
+
+# 임포트 정렬(I)이 first-party를 판정하는 경로
+src = ["src"]
+
+[tool.ruff.lint]
+# ALL은 버전이 오를 때마다 새 규칙이 켜진다
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+ignore = [
+    # 줄 길이는 formatter가 맞춘다. 한국어 주석에서 초과가 남는다
+    "E501",
+    # ×, 무선 공백, 전각 괄호를 라틴 문자 오타로 판정한다. 발행본에서 받은 문자라
+    # 고치면 대조가 깨진다
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.rules]
+all = "error"
+# 주석 없는 dict와 list가 125곳이다. 값 형을 하나씩 확인해 채우는 작업이라 따로 한다
+missing-type-argument = "ignore"
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib", "--strict-markers", "--strict-config"]
+testpaths = ["tests"]
