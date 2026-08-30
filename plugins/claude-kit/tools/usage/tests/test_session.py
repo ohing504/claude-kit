@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from usage.session import find_transcript, read_session
+from usage.session import find_transcript, read_session, scan_teams
 
 
 def _row(**kw) -> str:
@@ -2201,3 +2201,48 @@ def test_a_tool_call_without_a_result_is_still_kept(project: Path) -> None:
     )
     s = read_session(find_transcript("s1", project.parent))
     assert [(c.name, c.result_chars, c.minutes) for c in s.main.tool_calls] == [("Read", 0, 0.0)]
+
+
+def test_scan_teams_collects_teammates_across_the_whole_corpus(project: Path) -> None:
+    """teammate는 자기 cwd가 정한 폴더에 남는다 — 코퍼스 전체를 한 번에 걷어야 빠짐이 없다."""
+    other = project.parent / "-Users-x-other"
+    other.mkdir()
+    (other / "sub9.jsonl").write_text(
+        _row(
+            type="user",
+            teamName="session-s1",
+            agentName="reader-1",
+            timestamp="2026-08-20T12:00:02.000Z",
+            message={"role": "user", "content": "판독해라"},
+        ),
+        encoding="utf-8",
+    )
+    _write_main(project, "s1", [_assistant(_usage(out=1), "2026-08-20T12:00:00.000Z", mid="m1")])
+    assert scan_teams(project.parent) == {"session-s1": [(other / "sub9.jsonl", "reader-1")]}
+
+
+def test_a_given_team_map_replaces_the_per_session_scan(project: Path) -> None:
+    """미리 걷은 매핑을 주면 그것만 쓴다 — 세션마다 코퍼스를 다시 훑지 않는다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z", mid="m1"),
+            _spawned("reader-1", "demo:reader-b", "session-s1", "2026-08-20T12:00:01.000Z"),
+        ],
+    )
+    (project / "sub9.jsonl").write_text(
+        _row(
+            type="user",
+            teamName="session-s1",
+            agentName="reader-1",
+            timestamp="2026-08-20T12:00:02.000Z",
+            message={"role": "user", "content": "판독해라"},
+        )
+        + _assistant(_usage(read=5000, write=800, out=200), "2026-08-20T12:09:00.000Z", mid="m2"),
+        encoding="utf-8",
+    )
+    s = read_session(find_transcript("s1", project.parent), teams={})
+    assert s.agents == []
+    s = read_session(find_transcript("s1", project.parent), teams=scan_teams(project.parent))
+    assert [(a.label, a.totals.cache_read) for a in s.agents] == [("reader-1", 5000)]

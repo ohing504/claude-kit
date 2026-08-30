@@ -8,6 +8,7 @@ import json
 import posixpath
 import re
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import pairwise
@@ -773,9 +774,9 @@ def _launches(rows: list[dict]) -> dict[str, tuple[str, str, int]]:
     return out
 
 
-def _mentions(path: Path, team: str) -> bool:
-    """팀명이 파일 어딘가에 있는지만 본다 — 없으면 파싱조차 하지 않는다."""
-    needle = team.encode()
+def _mentions(path: Path, text: str) -> bool:
+    """그 글자가 파일 어딘가에 있는지만 본다 — 없으면 파싱조차 하지 않는다."""
+    needle = text.encode()
     with path.open("rb") as f:
         tail = b""
         while chunk := f.read(1 << 20):
@@ -803,6 +804,32 @@ def _member_of(path: Path, team: str) -> str | None:
             if r.get("teamName") == team:
                 return str(r.get("agentName") or "")
     return None
+
+
+def scan_teams(root: Path) -> dict[str, list[tuple[Path, str]]]:
+    """코퍼스 전체를 한 번 훑어 teammate 세션 파일을 팀명별로 모은다.
+
+    teammate는 자기 cwd가 정한 프로젝트 폴더에 남아 메인과 다른 폴더에 있을 수 있다. 세션
+    하나를 읽을 때마다 코퍼스 전체를 훑으면 그 순회가 세션 수만큼 되풀이된다. 여러 세션을 잴
+    때는 이 결과를 `read_session`에 넘긴다.
+    """
+    found: dict[str, list[tuple[Path, str]]] = {}
+    for p in sorted(root.glob("*/*.jsonl")):
+        if not _mentions(p, '"teamName"'):
+            continue
+        with p.open(encoding="utf-8") as f:
+            for line in f:
+                if '"teamName"' not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                team = r.get("teamName")
+                if team:
+                    found.setdefault(str(team), []).append((p, str(r.get("agentName") or "")))
+                    break
+    return found
 
 
 def _cut(rows: list[dict], until: int) -> list[dict]:
@@ -915,7 +942,9 @@ def read_session(
     until: int | None = None,
     since: int | None = None,
     marks_bash: str | None = None,
+    teams: Mapping[str, list[tuple[Path, str]]] | None = None,
 ) -> Session:
+    """`teams`는 `scan_teams`가 미리 걷은 매핑이다. 주지 않으면 이 세션의 팀명만 그 자리에서 훑는다."""
     session_id = path.stem
     bash_pattern = re.compile(marks_bash) if marks_bash else None
     rows = _rows(path)
@@ -955,12 +984,17 @@ def read_session(
     # teammate는 자기 cwd가 정한 프로젝트 폴더에 남는다 — 메인과 다른 폴더에 있을 수 있어
     # 프로젝트 폴더 전체를 훑는다. 한 폴더만 보면 그 teammate의 토큰이 합계에서 빠진다.
     team = f"session-{session_id[:8]}"
-    for p in sorted(path.parent.parent.glob("*/*.jsonl")):
-        if p == path:
-            continue
-        name = _member_of(p, team)
-        if name is None:
-            continue
+    if teams is not None:
+        members = [(p, name) for p, name in teams.get(team, ()) if p != path]
+    else:
+        members = []
+        for p in sorted(path.parent.parent.glob("*/*.jsonl")):
+            if p == path:
+                continue
+            name = _member_of(p, team)
+            if name is not None:
+                members.append((p, name))
+    for p, name in members:
         kind, label, order = launches.get(name, ("?", name, 0))
         agents.append(Agent(p.stem, kind, label, order, _tally(_rows(p))))
 
