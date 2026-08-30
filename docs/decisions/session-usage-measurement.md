@@ -8,9 +8,10 @@
 - **세션 파일은 읽기만 한다** — 옮기지도 고치지도 않는다. 그 파일은 Claude Code가 관리하고, 손대면 Claude 안에서 transcript를 다시 찾지 못하며 그 세션의 대화가 변질된다.
 - **인덱스에 셸 명령 원문을 담지 않는다** — API 키, 내부 호스트명, 계정 정보가 그대로 들어간다. 파일을 지목한 호출의 경로만 담는다.
 - **인덱스의 적재 단위는 요청 하나와 도구 호출 하나다** — 세션 집계만 담으면 지표를 새로 만들 때마다 코퍼스를 다시 전부 읽어야 한다.
-- **다시 읽을 세션은 크기와 수정 시각으로 가르고, 다시 읽을 때는 그 세션의 행을 전부 지우고 파일을 처음부터 읽는다** — 뒤에 붙은 행만 이어 넣으면 압축 지점과 쉰 구간의 판정이 어긋난다. 끝난 세션이라는 상태를 두지 않는다. 세션은 몇 달 뒤에도 재개된다.
+- **다시 읽을 세션은 그 세션을 이루는 파일 전부의 크기 합과 가장 늦은 수정 시각으로 가르고, 다시 읽을 때는 그 세션의 행을 전부 지우고 파일을 처음부터 읽는다** — 뒤에 붙은 행만 이어 넣으면 압축 지점과 쉰 구간의 판정이 어긋난다. 끝난 세션이라는 상태를 두지 않는다. 세션은 몇 달 뒤에도 재개된다. 메인 파일 하나만 보면 서브에이전트와 teammate가 쓴 것이 늘어도 판정이 그대로여서 그 요청이 영영 빠진다. 읽지 못한 세션(`status='error'`)만 예외로 크기와 시각이 같아도 다시 읽는다 — 읽지 못한 원인이 도구 쪽일 수 있고, 건너뛰면 도구를 고친 뒤에도 그 세션이 영영 `error`로 남는다.
+- **한 파일의 요청은 인덱스에 한 번만 담는다** — teammate 세션은 `subagents/` 아래가 아니라 top-level 세션 파일로 남아, 메인 세션의 agent 행으로 담긴 뒤 자기 세션으로 또 담기면 `requests` 전체를 합할 때 같은 요청이 두 번 세어진다. teammate 파일은 `status='teammate'`로 두고 요청과 도구 호출을 담지 않는다.
 - **`usage session`의 기본 출력은 JSON이고 사람이 읽을 표는 `--table`이다** — 이 도구를 부르는 쪽은 대부분 스킬을 쓰는 에이전트다.
-- **플러그인 버전과 패키지 버전을 같이 올린다** — `plugins/claude-kit/.claude-plugin/plugin.json`의 `version`과 `plugins/claude-kit/tools/usage/pyproject.toml`의 `version`은 항상 같은 값이다.
+- **플러그인 버전과 이 도구의 버전은 따로 올린다** — `plugins/claude-kit/.claude-plugin/plugin.json`의 `version`은 저장소가 내놓는 릴리스 번호이고, `plugins/claude-kit/tools/usage/pyproject.toml`의 `version`은 `uv tool install`이 설치하는 패키지 자신의 번호다. 둘을 같은 값으로 묶으면 이 도구만 고쳐도 스킬 전체의 릴리스 번호가 오르고, 스킬만 고치면 패키지 번호가 뒤처진다.
 - **도구 안의 파일은 저장소 문서를 링크하거나 경로로 가리키지 않는다** — 이 도구는 `uv tool install`로 저장소 밖에 설치돼 실행되므로, 설치된 사본에서 `docs/`와 `.claude/`의 경로가 존재하지 않는다.
 - **`pytest`, `ruff check`, `ruff format --check`, `ty check` 넷 다 통과해야 한다** — `ty check`의 진단 0건도 통과 조건이다.
 - **저장소마다 다른 판정은 도구에 넣지 않고 옵션 인자로 받는다** — `--marks`가 기본으로 내는 `Skill`과 `Agent`는 Claude Code가 정한 도구 이름이라 어느 저장소의 세션에서든 같은 뜻을 갖는다. 어느 셸 명령이 단계를 여는지는 저장소마다 다르므로 `--marks-bash`에 정규식을 받아 판정한다.
@@ -19,7 +20,7 @@
 
 ```check
 {"checks": [
-  {"cmd": "[ \"$(grep -oE '\"version\": *\"[^\"]+\"' plugins/claude-kit/.claude-plugin/plugin.json | grep -oE '[0-9][^\"]*')\" = \"$(grep -oE '^version *= *\"[^\"]+\"' plugins/claude-kit/tools/usage/pyproject.toml | grep -oE '[0-9][^\"]*')\" ] && echo same || echo differ", "expect": "same"},
+  {"cmd": "[ \"$(grep -oE '^version *= *\\\"[^\\\"]+\\\"' plugins/claude-kit/tools/usage/pyproject.toml | grep -oE '[0-9][^\\\"]*')\" = \"$(grep -A1 'name = \\\"usage\\\"' plugins/claude-kit/tools/usage/uv.lock | grep -oE '\\\"[0-9][^\\\"]*\\\"' | tr -d '\\\"')\" ] && echo same || echo differ", "expect": "same"},
   {"cmd": "grep -rIniE 'oh-my-creator|minju|ojju|studios|PERSONA|naver-blog' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
   {"cmd": "grep -rInE 'docs/decisions|[.]claude/(rules|skills|agents)|claude-kit/docs' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
   {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "10"},

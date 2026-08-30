@@ -473,4 +473,5 @@ def test_index_builds_the_database_at_the_given_path(tmp_path: Path, capsys) -> 
         "skipped": 0,
         "empty": 0,
         "failed": 0,
+        "teammate": 0,
     }

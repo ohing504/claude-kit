@@ -202,3 +202,109 @@ def test_a_compaction_boundary_is_marked_on_the_request(root: Path) -> None:
         (1, 0),
         (2, 1),
     ]
+
+
+def test_a_teammate_session_is_not_stored_twice(root: Path) -> None:
+    """teammate 세션 파일은 메인 세션의 agent 행으로 이미 담긴다 — 자기 세션으로 또 담으면
+    코퍼스 합계에서 그 요청이 두 번 세어진다."""
+    (root / "-Users-x-repo" / "abcdefgh-1111.jsonl").write_text(
+        _assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z", "m1"), encoding="utf-8"
+    )
+    (root / "-Users-x-repo" / "teammate-0001.jsonl").write_text(
+        _row(
+            type="assistant",
+            timestamp="2026-08-20T12:01:00.000Z",
+            teamName="session-abcdefgh",
+            agentName="reader-a",
+            message={
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "id": "m2",
+                "usage": _usage(read=5000, out=200),
+                "content": [],
+            },
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    assert _query(db, "SELECT session_id, status FROM sessions ORDER BY session_id") == [
+        ("abcdefgh-1111", "ok"),
+        ("teammate-0001", "teammate"),
+    ]
+    assert _query(
+        db, "SELECT session_id, agent_id, cache_read_tokens FROM requests ORDER BY id"
+    ) == [
+        ("abcdefgh-1111", None, 100),
+        ("abcdefgh-1111", "teammate-0001", 5000),
+    ]
+    assert _query(db, "SELECT sum(cache_read_tokens) FROM requests") == [(5100,)]
+
+
+def test_a_session_that_failed_to_read_is_tried_again(root: Path) -> None:
+    """읽지 못한 세션은 다음 실행에서 다시 읽는다 — 크기와 시각만 보면 도구를 고쳐도 영영 error로 남는다."""
+    broken = root / "-Users-x-repo" / "s1.jsonl"
+    broken.mkdir()
+    db = root.parent / "index.db"
+    assert index_corpus(root, db).failed == 1
+    assert index_corpus(root, db).failed == 1
+    assert _query(db, "SELECT status FROM sessions") == [("error",)]
+
+
+def test_a_grown_subagent_file_makes_its_session_be_read_again(root: Path) -> None:
+    """서브에이전트가 쓴 것은 메인 세션의 행으로 담긴다 — 메인 파일만 보면 늘어난 요청이 영영 빠진다."""
+    (root / "-Users-x-repo" / "s1.jsonl").write_text(
+        _assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z", "m1"), encoding="utf-8"
+    )
+    sub = root / "-Users-x-repo" / "s1" / "subagents"
+    sub.mkdir(parents=True)
+    agent = sub / "agent-aaa.jsonl"
+    agent.write_text(
+        _assistant(_usage(read=5000, out=200), "2026-08-20T12:01:00.000Z", "m2"), encoding="utf-8"
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    agent.write_text(
+        _assistant(_usage(read=5000, out=200), "2026-08-20T12:01:00.000Z", "m2")
+        + _assistant(_usage(read=7000, out=300), "2026-08-20T12:02:00.000Z", "m3"),
+        encoding="utf-8",
+    )
+    assert index_corpus(root, db).indexed == 1
+    assert _query(db, "SELECT sum(cache_read_tokens) FROM requests") == [(12100,)]
+
+
+def test_a_grown_teammate_file_makes_its_main_session_be_read_again(root: Path) -> None:
+    """teammate가 쓴 것도 메인 세션의 행으로 담긴다 — 판정 대상은 세션 하나를 이루는 파일 전부다."""
+
+    def teammate(*usages: tuple[str, str, dict]) -> str:
+        return "".join(
+            _row(
+                type="assistant",
+                timestamp=ts,
+                teamName="session-abcdefgh",
+                agentName="reader-a",
+                message={
+                    "role": "assistant",
+                    "model": "claude-opus-5",
+                    "id": mid,
+                    "usage": u,
+                    "content": [],
+                },
+            )
+            for ts, mid, u in usages
+        )
+
+    (root / "-Users-x-repo" / "abcdefgh-1111.jsonl").write_text(
+        _assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z", "m1"), encoding="utf-8"
+    )
+    mate = root / "-Users-x-repo" / "teammate-0001.jsonl"
+    first = ("2026-08-20T12:01:00.000Z", "m2", _usage(read=5000, out=200))
+    mate.write_text(teammate(first), encoding="utf-8")
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    mate.write_text(
+        teammate(first, ("2026-08-20T12:02:00.000Z", "m3", _usage(read=7000, out=300))),
+        encoding="utf-8",
+    )
+    index_corpus(root, db)
+    assert _query(db, "SELECT sum(cache_read_tokens) FROM requests") == [(12100,)]

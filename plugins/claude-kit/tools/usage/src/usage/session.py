@@ -244,11 +244,17 @@ def find_transcript(session_id: str, root: Path | None = None) -> Path:
 
     전체 ID가 없으면 앞자리로 찾는다 — ID가 36자라 사람은 앞자리만 옮겨 적는다. 앞자리가 같은
     세션이 둘 이상이면 고르지 않고 그 이름들을 낸다.
+
+    같은 ID의 파일이 폴더마다 하나씩 있을 수 있다 — 세션을 다른 cwd에서 재개하면 그렇게 남는다.
+    그때도 고르지 않고 그 경로들을 낸다.
     """
     base = root or _PROJECTS
     found = sorted(base.glob(f"*/{session_id}.jsonl"))
-    if found:
+    if len(found) == 1:
         return found[0]
+    if found:
+        paths = ", ".join(str(p) for p in found)
+        raise FileNotFoundError(f"세션 {session_id}의 transcript가 여럿이다 — {paths}")
     prefixed = sorted(base.glob(f"*/{session_id}*.jsonl"))
     if len(prefixed) == 1:
         return prefixed[0]

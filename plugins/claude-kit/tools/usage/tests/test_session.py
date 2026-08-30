@@ -535,6 +535,19 @@ def test_full_id_wins_over_prefix_match(tmp_path: Path) -> None:
     assert find_transcript("s1", root) == exact
 
 
+def test_the_same_id_in_two_project_folders_is_ambiguous(tmp_path: Path) -> None:
+    """세션을 다른 cwd에서 재개하면 같은 ID의 파일이 폴더마다 하나씩 남는다 — 아무거나 고르면
+    어느 폴더의 수치인지 모르는 채로 결론이 난다."""
+    root = tmp_path / "projects"
+    for slug in ("-Users-x-repo", "-Users-x-repo-other"):
+        (root / slug).mkdir(parents=True)
+        (root / slug / "s1.jsonl").write_text(
+            _assistant(_usage(out=1), "2026-08-20T12:00:00.000Z"), encoding="utf-8"
+        )
+    with pytest.raises(FileNotFoundError, match="-Users-x-repo-other"):
+        find_transcript("s1", root)
+
+
 def test_missing_session_names_where_it_looked(tmp_path: Path) -> None:
     root = tmp_path / "projects"
     root.mkdir(parents=True)

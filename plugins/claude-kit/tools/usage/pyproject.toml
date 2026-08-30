@@ -1,6 +1,6 @@
 [project]
 name = "usage"
-version = "0.12.0"
+version = "0.12.1"
 description = "세션 transcript에서 API 호출 수와 토큰과 소요를 센다 — 메인과 서브에이전트를 따로"
 requires-python = ">=3.13"
 dependencies = []
@@ -16,7 +16,6 @@ build-backend = "uv_build"
 dev = ["pytest>=9.0.3", "ruff>=0.9", "ty>=0.0.1a1"]
 
 [tool.ruff]
-# 이 파일에 [project]가 없어 requires-python에서 추론되지 않는다. 전 멤버가 >=3.13이다.
 target-version = "py313"
 line-length = 100
 extend-exclude = ["**/__pycache__", ".venv"]
