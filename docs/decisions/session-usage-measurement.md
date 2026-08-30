@@ -2,7 +2,9 @@
 
 ## 결정
 
-- **계측 규칙의 정본은 `plugins/claude-kit/tools/usage/tests/test_session.py`이고, 적재 규칙의 정본은 `tests/test_index.py`다** — 무엇을 어떻게 세는지와 무엇을 어느 열에 담는지는 이 테스트 파일들이 정한다. 같은 규칙을 소스 주석이나 `README.md`에 다시 적지 않는다. 새 지표가 필요하면 테스트를 먼저 쓰고 그 다음 도구에 넣는다.
+- **계측 규칙의 정본은 `plugins/claude-kit/tools/usage/tests/test_session.py`이고, 적재 규칙의 정본은 `tests/test_index.py`이고, 구독 한도 표본 규칙의 정본은 `tests/test_quota.py`다** — 무엇을 어떻게 세는지와 무엇을 어느 열에 담는지는 이 테스트 파일들이 정한다. 같은 규칙을 소스 주석이나 `README.md`에 다시 적지 않는다. 새 지표가 필요하면 테스트를 먼저 쓰고 그 다음 도구에 넣는다.
+- **구독 한도 표본은 `~/.claude/usage-quota.db`에 코퍼스 인덱스와 별도로 둔다** — `index.py`의 `_connect()`는 스키마 버전이 바뀌면 테이블을 DROP한다. 코퍼스 인덱스는 세션 파일에서 다시 만들 수 있는 캐시지만, 한도 표본은 statusLine stdin JSON에만 오고 그 시각이 지나면 다시 만들 수 없다. `quota.py`의 `_connect()`는 DROP하지 않고, 스키마를 바꿀 때는 `ALTER TABLE`을 쓴다.
+- **창의 부재는 행의 부재로 담는다** — Claude Code는 창이 초기화되면 그 창을 statusLine JSON에서 아예 지운다. 부재를 0%인 행으로 담으면 초기화 판정이 불가능해진다.
 - **모든 수치에 "세션 기록에 남은 것만"이라는 경계를 붙인다** — 이 도구는 `~/.claude/projects/<슬러그>/<세션ID>.jsonl`을 읽어 센다. 그 파일에 남지 않은 것은 세지 않는다. 경계를 붙이지 않은 수치를 인용하지 않는다. 이 문구는 `usage session`과 `usage corpus`의 출력 자체에 실린다(JSON은 `measured` 필드, `--table`은 첫 줄) — 도구를 호출하는 쪽은 출력만 보므로, 문서에만 적으면 그 경계를 알 수 없다.
 - **도구가 만드는 산출물을 저장소 안에 두지 않는다** — 이 저장소는 공개돼 있고, 세션 기록에는 실제 파일 경로와 작업 내용과 경우에 따라 비밀이 들어간다. 세션 하나를 재는 결과는 stdout으로만 낸다. 코퍼스 인덱스는 `~/.claude/usage-index.db`에 만들고 `--db`로 바꾼다.
 - **세션 파일은 읽기만 한다** — 옮기지도 고치지도 않는다. 그 파일은 Claude Code가 관리하고, 손대면 Claude 안에서 transcript를 다시 찾지 못하며 그 세션의 대화가 변질된다.
@@ -27,7 +29,7 @@
   {"cmd": "[ \"$(grep -oE '^version *= *\\\"[^\\\"]+\\\"' plugins/claude-kit/tools/usage/pyproject.toml | grep -oE '[0-9][^\\\"]*')\" = \"$(grep -A1 'name = \\\"usage\\\"' plugins/claude-kit/tools/usage/uv.lock | grep -oE '\\\"[0-9][^\\\"]*\\\"' | tr -d '\\\"')\" ] && echo same || echo differ", "expect": "same"},
   {"cmd": "grep -rIniE 'oh-my-creator|minju|ojju|studios|PERSONA|naver-blog' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
   {"cmd": "grep -rInE 'docs/decisions|[.]claude/(rules|skills|agents)|claude-kit/docs' --exclude-dir=__pycache__ plugins/claude-kit/tools/usage/README.md plugins/claude-kit/tools/usage/pyproject.toml plugins/claude-kit/tools/usage/src plugins/claude-kit/tools/usage/tests | wc -l | tr -d ' '", "expect": "0"},
-  {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "14"},
+  {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "16"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync pytest -q >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ruff check . >/dev/null 2>&1 && uv run --directory plugins/claude-kit/tools/usage --no-sync ruff format --check . >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ty check >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"}

@@ -10,6 +10,9 @@ usage session <세션 ID> --from 15 --until 21   # 그 구간만
 
 usage index                          # 코퍼스 전체를 데이터베이스에 적재
 usage index --db <경로> --root <폴더>
+
+usage quota --collect -- <원래 커맨드>   # statusLine을 tee해 구독 한도 표본을 뜬다
+usage quota --session <세션 ID> --from 15 --until 21   # 그 구간의 한도 소진량
 ```
 
 이 도구를 부르는 쪽은 대부분 스킬을 쓰는 에이전트다. 그래서 `session`의 기본 출력은 JSON이고,
@@ -163,6 +166,45 @@ usage corpus --check                          # 항등식 위반을 찾는다
 
 **웹 검색과 페이지 읽기는 세션 기록에 안 남는다.** `usage corpus`의 모든 수치는 세션 기록에
 남은 것만 잰다.
+
+## `usage quota`
+
+구독 한도(5시간/7일/지출 한도) 소진 비율은 세션 파일 어디에도 남지 않는다. statusLine 훅의
+stdin JSON에만 온다(`code.claude.com/docs/en/statusline`). 그래서 `usage quota --collect`가
+statusLine을 tee해 표본을 뜬다 — stdin으로 받은 페이로드를 표본으로 남기고, 받은 바이트를 그대로
+자식 프로세스에 넘겨 화면 출력은 바뀌지 않는다.
+
+`~/.claude/settings.json`을 아래처럼 바꾼다 (`statusline.py` 경로는 실제 설정에 맞춘다):
+
+```json
+{ "statusLine": { "type": "command",
+    "command": "usage quota --collect -- $HOME/.claude/hud/statusline.py" } }
+```
+
+```bash
+usage quota --collect -- <원래 커맨드>            # tee — statusLine에 그대로 건다
+usage quota --collect                             # tee 없이 표본만 남긴다
+usage quota --session <세션 ID> --from 15 --until 21   # 그 구간의 소진량
+usage quota --session <세션 ID> --table           # 사람이 읽을 표로
+```
+
+표본은 코퍼스 인덱스와 별도로 `~/.claude/usage-quota.db`에 쌓인다(`--db`로 바꾼다) —
+그 시각이 지나면 다시 만들 수 없는 값이라 스키마가 바뀌어도 테이블을 지우지 않는다.
+
+`--session`은 그 구간의 가장 이른 표본과 가장 늦은 표본의 차이를 낸다. 아래 경우는
+`unmeasurable`로 사유와 함께 낸다 — 0으로 뭉개지 않는다.
+
+- 그 구간에 표본이 두 개 미만이다
+- 구간 시작 또는 끝에 그 창의 표본이 없다
+- 구간 중 창이 초기화됐다(`resets_at` 변화)
+- 소진율이 줄었다(값이 비정상이다)
+
+같은 구간에 다른 세션이 함께 돈 것은 버리지 않고 `parallel_sessions`로 낸다 — 그 소진이 섞여
+있을 수 있다는 뜻이고, 리포트를 읽는 쪽이 이 값을 상한으로 쓸 수 있다.
+
+**statusLine이 다시 그려질 때 남은 표본만 잰다.** `-p` 모드와 백그라운드 세션에는 애초에
+표본이 없다. 같은 시각에 다른 세션, 다른 기기, 웹 Claude를 함께 썼다면 그 소진도 섞여 있을
+수 있다.
 
 ## 내지 않는 것
 
