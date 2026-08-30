@@ -30,7 +30,8 @@
   {"cmd": "find plugins/claude-kit/tools/usage -type f -not -path '*/.*' -not -path '*__pycache__*' | wc -l | tr -d ' '", "expect": "14"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync pytest -q >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ruff check . >/dev/null 2>&1 && uv run --directory plugins/claude-kit/tools/usage --no-sync ruff format --check . >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
-  {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ty check >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"}
+  {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ty check >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
+  {"cmd": "[ -e plugins/claude-kit/tools/usage/src/usage/quota.py ] && echo present || echo absent", "expect": "absent"}
 ]}
 ```
 
@@ -55,3 +56,4 @@
 - **변경된 세션의 뒤에 붙은 행만 이어 넣는다** — 압축 지점, 쉰 구간, 합쳐진 usage 판정이 전부 행 전체 순서에 의존해 어긋난다.
 - **플러그인 설치 경로로 도구를 실행한다** — 마켓플레이스가 `source: directory`이면 `installLocation`이 원본 경로 그대로여서 `~/.claude/plugins/marketplaces/claude-kit`이 존재하지 않는다. 플러그인 캐시 경로는 버전마다 달라져 명령이 깨진다. `uv tool install`로 설치해 `usage`를 직접 호출한다.
 - **편차를 낼 작업 종류 라벨을 인덱스에 새로 만든다** — 세션 기록에는 "같은 종류의 작업"을 식별할 신호가 없다. 첫 사용자 메시지를 LLM으로 분류하는 방식은 도구가 판단을 내리는 것이 되어, "도구는 사실만 내고 개선안은 LLM이 낸다"는 이 도구의 기획 원칙에 어긋난다.
+- **statusLine을 tee해 구독 한도(5시간/7일/지출) 소진 표본을 재는 `usage quota` 명령을 공용 도구에 넣는다** — payload 스키마 확인과 구현, 테스트까지 마쳤다(`feat/subscription-quota-measurement` 브랜치, PR #30, 병합하지 않음). 이 표본은 이 PC에서 Claude Code CLI의 statusLine이 재실행될 때만 관측된다. Claude 데스크톱 앱과 claude.ai 웹에서 쓴 소진은 같은 계정 한도에 반영되면서도 이 PC의 statusLine에도 세션 transcript에도 어떤 흔적도 남기지 않는다. 병렬 세션(`parallel_sessions`)은 최소한 "섞였다"는 사실을 표시해 상한으로 읽게라도 할 수 있지만, 데스크톱/웹 오염은 발생 여부 자체를 이 도구가 원천적으로 알 수 없어 표시조차 못 한다. 실사용 구간(파이프라인 디버깅, 도구 배포)은 데스크톱/웹 사용과 섞이지 않는다는 보장이 없어, 구간 소진량 귀속이 조용히 부풀려질 수 있다. 코드는 그 브랜치에 남겨, 측정 구간에 다른 클라이언트를 쓰지 않는다고 스스로 통제할 수 있는 임시 측정에 한해 로컬로만 쓴다.
