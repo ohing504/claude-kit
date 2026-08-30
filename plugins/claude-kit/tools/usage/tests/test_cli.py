@@ -555,6 +555,22 @@ def test_corpus_group_by_without_spread_is_rejected(tmp_path: Path, capsys) -> N
     assert "spread" in capsys.readouterr().err
 
 
+def test_corpus_project_without_a_value_still_errors(tmp_path: Path, capsys) -> None:
+    """--project 뒤에 값이 없으면 다음 옵션을 슬러그로 삼키지 않고 argparse 에러를 낸다."""
+    db = _seeded_db(tmp_path)
+    with pytest.raises(SystemExit):
+        main(["corpus", "--db", str(db), "--project", "--top", "8"])
+    assert "expected one argument" in capsys.readouterr().err
+
+
+def test_corpus_project_accepts_a_slug_that_starts_with_a_dash(tmp_path: Path, capsys) -> None:
+    """프로젝트 슬러그는 절대경로 기반이라 항상 '-'로 시작한다 — argparse가 옵션으로 오인하면 안 된다."""
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--by", "skill", "--project", "-Users-x-repo"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["skill"] == []
+
+
 def test_corpus_check_passes_with_exit_code_zero(tmp_path: Path, capsys) -> None:
     db = _seeded_db(tmp_path)
     assert main(["corpus", "--db", str(db), "--check"]) == 0

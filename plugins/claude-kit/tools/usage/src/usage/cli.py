@@ -355,7 +355,23 @@ def _corpus_report(data: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _normalize_project_arg(argv: list[str]) -> list[str]:
+    """프로젝트 슬러그는 절대경로 기반이라 항상 '-'로 시작해, 띄어 쓰면 argparse가 다음 옵션으로 오인한다."""
+    out = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok == "--project" and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+            out.append(f"--project={argv[i + 1]}")
+            i += 2
+            continue
+        out.append(tok)
+        i += 1
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = _normalize_project_arg(sys.argv[1:] if argv is None else argv)
     root = argparse.ArgumentParser(prog="usage", description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
     _add_index(sub.add_parser("index", help="코퍼스 전체를 데이터베이스에 적재한다"))
