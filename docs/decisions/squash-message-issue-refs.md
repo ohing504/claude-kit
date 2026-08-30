@@ -18,8 +18,6 @@
 ]}
 ```
 
-기각한 안이 스킬에 다시 들어왔는지 보는 부재 검사다. 결정 항목 쪽은 기계로 판정할 수 없다 — `SKILL.md`는 LLM에게 주는 지시문이라 지시가 지켜지는지는 실행해야 안다. 문구를 `grep`으로 세는 검사는 그 문구가 있는지만 보고 결정이 반영됐는지는 보지 못하므로 두지 않는다.
-
 ## 근거
 
 **사실** — GitHub 공식 문서 [Linking a pull request to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue)는 여러 이슈를 연결할 때 "Use full syntax for each issue"라며 `Resolves #10, resolves #123, resolves octo-org/octo-repo#100`을 예로 든다 (2026-08-13 조회). 키워드 하나에 번호를 쉼표로 이어 붙이면 첫 번호만 닫힌다.
