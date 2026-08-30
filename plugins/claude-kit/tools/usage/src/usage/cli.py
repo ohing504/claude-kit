@@ -361,7 +361,7 @@ def _normalize_project_arg(argv: list[str]) -> list[str]:
     i = 0
     while i < len(argv):
         tok = argv[i]
-        if tok == "--project" and i + 1 < len(argv):
+        if tok == "--project" and i + 1 < len(argv) and not argv[i + 1].startswith("--"):
             out.append(f"--project={argv[i + 1]}")
             i += 2
             continue
