@@ -9,7 +9,16 @@ from pathlib import Path
 
 import pytest
 
-from usage.corpus import by_agent, by_file, by_length, by_skill, check, iter_scopes
+from usage.corpus import (
+    by_agent,
+    by_file,
+    by_length,
+    by_skill,
+    by_spread,
+    check,
+    iter_scopes,
+    summary,
+)
 from usage.index import _connect
 
 
@@ -180,6 +189,80 @@ def test_every_bucket_names_a_session_and_request_to_trace_back_to(db: sqlite3.C
     assert bucket.example is not None
     assert bucket.example.session_id == "s1"
     assert isinstance(bucket.example.order, int)
+
+
+def test_the_corpus_summary_counts_how_many_sessions_were_compacted(db: sqlite3.Connection) -> None:
+    _session(db, "s1")
+    _req(db, "s1", 1, 1_000)
+    _req(db, "s1", 2, 500, boundary=True)  # 압축 경계
+    _req(db, "s1", 3, 600)
+    _session(db, "s2")
+    _req(db, "s2", 1, 1_000)
+    _req(db, "s2", 2, 1_100)
+    db.commit()
+
+    result = summary(list(iter_scopes(db)))
+    assert result["sessions"] == 2
+    assert result["sessions_with_compaction"] == 1
+    assert result["compaction_ratio"] == 0.5
+
+
+def test_the_corpus_summary_counts_subagent_scopes_apart_from_sessions(
+    db: sqlite3.Connection,
+) -> None:
+    _session(db, "s1")
+    _req(db, "s1", 1, 1_000)
+    _req(db, "s1", 2, 1_300)
+    _call(db, "s1", 1, "Agent", 300, target="general-purpose")
+    _agent(db, "s1", "a1", kind="general-purpose")
+    _req(db, "s1", 1, 5_000, agent_id="a1")
+    db.commit()
+
+    result = summary(list(iter_scopes(db)))
+    assert result["sessions"] == 1  # 서브에이전트는 세션이 아니다
+    assert result["scopes"] == 2  # 메인 + 서브에이전트
+    assert result["requests"] == 3
+
+
+def test_spread_reports_the_distribution_across_scopes_not_only_the_mean(
+    db: sqlite3.Connection,
+) -> None:
+    _session(db, "s1")
+    _req(db, "s1", 1, 100)
+    _session(db, "s2")
+    _req(db, "s2", 1, 300)
+    db.commit()
+
+    bucket = by_spread(iter_scopes(db), "project")[0].as_dict()
+    assert bucket["scopes"] == 2
+    assert bucket["min"] == 100
+    assert bucket["max"] == 300
+    assert bucket["mean"] == 200
+
+
+def test_a_group_with_one_scope_reports_the_same_value_for_min_and_max(
+    db: sqlite3.Connection,
+) -> None:
+    _session(db, "s1")
+    _req(db, "s1", 1, 700)
+    db.commit()
+
+    bucket = by_spread(iter_scopes(db), "project")[0].as_dict()
+    assert bucket["scopes"] == 1
+    assert bucket["min"] == bucket["max"] == bucket["median"] == bucket["p95"] == 700
+
+
+def test_spread_ranks_by_total_residual_so_the_top_cut_keeps_what_is_worth_fixing(
+    db: sqlite3.Connection,
+) -> None:
+    _session(db, "s1", project="proj-big")
+    _req(db, "s1", 1, 10_000)
+    _session(db, "s2", project="proj-small")
+    _req(db, "s2", 1, 100)
+    db.commit()
+
+    buckets = by_spread(iter_scopes(db), "project")
+    assert [b.key for b in buckets] == ["proj-big", "proj-small"]
 
 
 def test_check_reports_no_violations_for_a_well_formed_corpus(db: sqlite3.Connection) -> None:
