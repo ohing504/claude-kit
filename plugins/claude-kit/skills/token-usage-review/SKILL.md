@@ -40,13 +40,11 @@ allowed-tools: Bash(pwd), Bash(ls:*), Bash(usage index:*), Bash(usage corpus:*),
 `<슬러그>`는 3단계에서 정한 값, `<top>`은 2단계에서 정한 값(기본 8, `--all`이면 5)으로 채운다. `--since`/`--until`이 주어졌으면 두 명령 모두에 그대로 붙인다.
 
 ```text
-usage corpus --project=<슬러그> --top <top> --table
-usage corpus --project=<슬러그> --check --table
+usage corpus --project <슬러그> --top <top> --table
+usage corpus --project <슬러그> --check --table
 ```
 
-`<슬러그>`는 `-`로 시작하므로 `--project <슬러그>`로 띄어 쓰면 argparse가 슬러그를 옵션으로 오인해 `expected one argument` 에러가 난다. 반드시 `--project=<슬러그>` 형식을 쓴다.
-
-`--all`이면 `--project=<슬러그>`를 빼고 나머지는 그대로 쓴다.
+`--all`이면 `--project <슬러그>`를 빼고 나머지는 그대로 쓴다.
 
 - `--table`을 쓰고 JSON을 쓰지 않는다. JSON은 들여쓰기가 있어 같은 내용에 토큰이 더 들고, `--table`의 각 행에도 되짚기에 필요한 `<session_id>#<order>`가 실린다.
 - `--by`를 지정하지 않는다. 지정하지 않으면 skill, agent, tool, file, project, period, length, compaction, spread 9개 축이 한 번에 나온다. 축마다 따로 부르면 명령이 9번이 되고 머리말이 9번 중복된다.
