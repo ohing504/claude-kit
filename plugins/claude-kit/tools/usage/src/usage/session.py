@@ -41,6 +41,10 @@ class Request:
     timestamp: str
     tools: list[str] = field(default_factory=list)
     produced_chars: int = 0
+    model: str = ""
+    input: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
 
 
 @dataclass
@@ -411,7 +415,8 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
             counted.add(key)
             u = merged[key]
             t.calls += 1
-            models[str(message.get("model") or "?")] += 1
+            model = str(message.get("model") or "?")
+            models[model] += 1
             t.input += u.get("input_tokens", 0)
             t.output += u.get("output_tokens", 0)
             t.thinking += u.get("thinking", 0)
@@ -427,6 +432,10 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                     + u.get("cache_creation_input_tokens", 0),
                     output=u.get("output_tokens", 0),
                     timestamp=str(r.get("timestamp") or ""),
+                    model=model,
+                    input=u.get("input_tokens", 0),
+                    cache_read=u.get("cache_read_input_tokens", 0),
+                    cache_write=u.get("cache_creation_input_tokens", 0),
                 )
             )
         answering = r.get("type") == "assistant"
@@ -815,20 +824,23 @@ def scan_teams(root: Path) -> dict[str, list[tuple[Path, str]]]:
     """
     found: dict[str, list[tuple[Path, str]]] = {}
     for p in sorted(root.glob("*/*.jsonl")):
-        if not _mentions(p, '"teamName"'):
-            continue
-        with p.open(encoding="utf-8") as f:
-            for line in f:
-                if '"teamName"' not in line:
-                    continue
-                try:
-                    r = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                team = r.get("teamName")
-                if team:
-                    found.setdefault(str(team), []).append((p, str(r.get("agentName") or "")))
-                    break
+        try:
+            if not _mentions(p, '"teamName"'):
+                continue
+            with p.open(encoding="utf-8") as f:
+                for line in f:
+                    if '"teamName"' not in line:
+                        continue
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    team = r.get("teamName")
+                    if team:
+                        found.setdefault(str(team), []).append((p, str(r.get("agentName") or "")))
+                        break
+        except OSError:
+            continue  # 읽히지 않는 파일 하나가 코퍼스 전체 스캔을 멈추게 하지 않는다
     return found
 
 

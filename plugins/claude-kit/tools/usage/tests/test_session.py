@@ -2246,3 +2246,39 @@ def test_a_given_team_map_replaces_the_per_session_scan(project: Path) -> None:
     assert s.agents == []
     s = read_session(find_transcript("s1", project.parent), teams=scan_teams(project.parent))
     assert [(a.label, a.totals.cache_read) for a in s.agents] == [("reader-1", 5000)]
+
+
+def test_each_request_keeps_the_model_that_answered_it(project: Path) -> None:
+    """모델 이름은 요청마다 다르다 — 이름별 개수만 남기면 어느 요청이 어느 모델이었는지 못 본다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _assistant(_usage(read=100, out=10), "2026-08-20T12:00:00.000Z", mid="m1"),
+            _row(
+                type="assistant",
+                timestamp="2026-08-20T12:01:00.000Z",
+                message={
+                    "role": "assistant",
+                    "model": "claude-haiku-4-5-20251001",
+                    "id": "m2",
+                    "usage": _usage(read=200, out=20),
+                    "content": [],
+                },
+            ),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert [r.model for r in s.main.requests] == ["claude-opus-5", "claude-haiku-4-5-20251001"]
+
+
+def test_a_request_keeps_cache_read_and_write_apart(project: Path) -> None:
+    """캐시 읽기와 쓰기는 값이 다르다 — 합쳐 담으면 어느 쪽이 비용을 냈는지 못 가른다."""
+    _write_main(
+        project,
+        "s1",
+        [_assistant(_usage(read=100, write=50, inp=7, out=10), "2026-08-20T12:00:00.000Z")],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    r = s.main.requests[0]
+    assert (r.input, r.cache_read, r.cache_write, r.context) == (7, 100, 50, 157)
