@@ -13,6 +13,7 @@ from typing import Any
 
 from usage.corpus import BY_CHOICES, CheckResult, check, report
 from usage.index import index_corpus
+from usage.quota import Attribution, attribute_interval, run_collect
 from usage.session import Session, Totals, find_transcript, read_session
 
 
@@ -254,6 +255,9 @@ def _summary_line(s: dict[str, Any]) -> str:
 # 인덱스는 저장소 안에 두지 않는다 — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다.
 _DEFAULT_DB = Path.home() / ".claude" / "usage-index.db"
 _DEFAULT_ROOT = Path.home() / ".claude" / "projects"
+# 코퍼스 인덱스와 다른 파일에 둔다 — 인덱스는 세션 파일에서 다시 만들 수 있는 캐시지만, 한도
+# 표본은 그 시각이 지나면 영영 다시 만들 수 없다.
+_DEFAULT_QUOTA_DB = Path.home() / ".claude" / "usage-quota.db"
 
 
 def _add_db(p: argparse.ArgumentParser) -> None:
@@ -355,6 +359,52 @@ def _corpus_report(data: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+# 세션 기록(jsonl)과 달리 이 값은 statusLine이 다시 그려질 때만 남는다 — 그 사이의 소진은
+# 놓친다. `usage session`의 `_MEASURED`와 같은 자리에서, 같은 이유로 출력에 싣는다.
+_QUOTA_MEASURED = (
+    "이 값은 statusLine이 다시 그려질 때 남은 표본만 잰다."
+    " `-p` 모드와 백그라운드 세션에는 애초에 표본이 없다."
+    " 같은 시각에 다른 세션, 다른 기기, 웹 Claude를 함께 썼다면 그 소진도 섞여 있을 수 있다."
+)
+
+
+def _quota_dict(attr: Attribution) -> dict[str, object]:
+    return {
+        "measured": _QUOTA_MEASURED,
+        "session_id": attr.session_id,
+        "from": attr.from_ts,
+        "until": attr.until_ts,
+        "windows": [asdict(d) for d in attr.deltas],
+        "unmeasurable": attr.unmeasurable,
+        "parallel_sessions": attr.parallel_sessions,
+    }
+
+
+def _quota_table(attr: Attribution) -> str:
+    lines = [
+        _QUOTA_MEASURED,
+        f"세션 {attr.session_id} — {attr.from_ts} ~ {attr.until_ts}",
+    ]
+    for d in attr.deltas:
+        lines.append(f"  {d.window_kind}  {d.start_pct:.1f}% -> {d.end_pct:.1f}% (+{d.delta:.1f}p)")
+    for reason in attr.unmeasurable:
+        lines.append(f"  측정 불가  {reason}")
+    if attr.parallel_sessions:
+        lines.append(f"병렬 세션  {', '.join(attr.parallel_sessions)}")
+    return "\n".join(lines)
+
+
+def _resolve_transcript(session_arg: str) -> Path:
+    """세션 ID 또는 transcript 파일 경로를 받아 파일 경로를 낸다. 못 찾으면 `FileNotFoundError`."""
+    given = Path(session_arg)
+    if given.is_file():
+        return given
+    if "/" in session_arg or session_arg.endswith(".jsonl"):
+        # 경로를 준 것이므로 세션 ID로 다시 찾지 않는다 — 엉뚱한 위치를 탓하게 된다
+        raise FileNotFoundError(f"{given} 파일을 찾지 못했다")
+    return find_transcript(session_arg)
+
+
 def _normalize_project_arg(argv: list[str]) -> list[str]:
     """프로젝트 슬러그는 절대경로 기반이라 항상 '-'로 시작해, 띄어 쓰면 argparse가 다음 옵션으로 오인한다."""
     out = []
@@ -370,12 +420,37 @@ def _normalize_project_arg(argv: list[str]) -> list[str]:
     return out
 
 
+def _split_dashdash(argv: list[str]) -> tuple[list[str], list[str] | None]:
+    """`--` 뒤의 자식 커맨드를 argparse가 보기 전에 떼어낸다 (`usage quota --collect -- <cmd>`)."""
+    if "--" in argv:
+        i = argv.index("--")
+        return argv[:i], argv[i + 1 :]
+    return argv, None
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = _normalize_project_arg(sys.argv[1:] if argv is None else argv)
+    argv, child_cmd = _split_dashdash(argv)
     root = argparse.ArgumentParser(prog="usage", description=__doc__)
     sub = root.add_subparsers(dest="command", required=True)
     _add_index(sub.add_parser("index", help="코퍼스 전체를 데이터베이스에 적재한다"))
     _add_corpus(sub.add_parser("corpus", help="코퍼스에서 잔존 비용 순위를 뽑는다"))
+    q = sub.add_parser("quota", help="statusLine payload에서 구독 한도 소진 표본을 뜬다")
+    q.add_argument(
+        "--db", default=str(_DEFAULT_QUOTA_DB), help=f"데이터베이스 파일 (기본 {_DEFAULT_QUOTA_DB})"
+    )
+    q.add_argument(
+        "--collect",
+        action="store_true",
+        help="stdin의 statusLine payload를 표본으로 남긴다."
+        " `-- <cmd>`가 있으면 그 payload를 그대로 자식에 넘기고 자식의 출력을 통과시킨다",
+    )
+    q.add_argument("--session", metavar="ID", help="이 세션 ID의 구간 소진량을 낸다")
+    q.add_argument(
+        "--from", dest="since", type=int, metavar="N", help="--session과 함께, N번째 요청부터"
+    )
+    q.add_argument("--until", type=int, metavar="M", help="--session과 함께, M번째 요청까지")
+    q.add_argument("--table", action="store_true", help="사람이 읽을 표로 낸다")
     p = sub.add_parser("session", help="세션 하나를 잰다")
     p.add_argument("session", help="세션 ID 또는 transcript 파일 경로")
     p.add_argument("--table", action="store_true", help="사람이 읽을 표로 낸다")
@@ -407,6 +482,34 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "index":
         idx_report = index_corpus(Path(args.root), Path(args.db))
         print(json.dumps({"db": args.db, **asdict(idx_report)}, ensure_ascii=False))
+        return 0
+    if args.command == "quota":
+        if args.collect and args.session:
+            print("--collect와 --session은 같이 쓸 수 없다", file=sys.stderr)
+            return 1
+        if args.collect:
+            return run_collect(Path(args.db), child_cmd)
+        if not args.session:
+            print("--collect 또는 --session이 필요하다", file=sys.stderr)
+            return 1
+        try:
+            path = _resolve_transcript(args.session)
+        except FileNotFoundError as e:
+            print(e, file=sys.stderr)
+            return 1
+        s = read_session(path, until=args.until, since=args.since)
+        if not s.main.requests:
+            print("그 구간에 요청이 없다", file=sys.stderr)
+            return 1
+        # 표본은 statusLine payload의 session_id로 쌓인다 — 그 값은 transcript 파일명(확장자
+        # 제외)과 같다. `args.session`이 세션 ID 대신 파일 경로였으면 조회 키가 달라진다.
+        with closing(sqlite3.connect(args.db)) as conn:
+            attr = attribute_interval(
+                conn, path.stem, s.main.requests[0].timestamp, s.main.requests[-1].timestamp
+            )
+        print(
+            _quota_table(attr) if args.table else json.dumps(_quota_dict(attr), ensure_ascii=False)
+        )
         return 0
     if args.command == "corpus":
         if args.group_by is not None and args.by != "spread":
@@ -455,19 +558,11 @@ def main(argv: list[str] | None = None) -> int:
         print("--from이 --until보다 크면 잴 요청이 없다", file=sys.stderr)
         return 1
 
-    given = Path(args.session)
-    if given.is_file():
-        path = given
-    elif "/" in args.session or args.session.endswith(".jsonl"):
-        # 경로를 준 것이므로 세션 ID로 다시 찾지 않는다 — 엉뚱한 위치를 탓하게 된다
-        print(f"{given} 파일을 찾지 못했다", file=sys.stderr)
+    try:
+        path = _resolve_transcript(args.session)
+    except FileNotFoundError as e:
+        print(e, file=sys.stderr)
         return 1
-    else:
-        try:
-            path = find_transcript(args.session)
-        except FileNotFoundError as e:
-            print(e, file=sys.stderr)
-            return 1
 
     s = read_session(path, until=args.until, since=args.since, marks_bash=args.marks_bash)
     if args.marks:
