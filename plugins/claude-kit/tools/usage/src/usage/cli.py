@@ -220,9 +220,14 @@ def _agents_total(s: Session) -> Totals:
     )
 
 
+# `tool_spans`는 `datetime` 쌍이라 `json.dumps`가 막힌다. `tool_calls`는 인덱스가 행을 만들 때
+# 쓰는 호출 단위 목록이라 한 세션의 JSON에 실으면 출력이 배로 커지고 읽을 것이 묻힌다.
+_NOT_IN_JSON = {"tool_spans", "tool_calls"}
+
+
 def _serializable(items: list[tuple[str, object]]) -> dict[str, object]:
-    """JSON으로 낼 수 없는 중간값을 뺀 dict. `tool_spans`는 `datetime` 쌍이라 `json.dumps`가 막힌다."""
-    return {k: v for k, v in items if k != "tool_spans"}
+    """JSON으로 낼 수 없는 값과 이 출력이 담지 않는 중간값을 뺀 dict."""
+    return {k: v for k, v in items if k not in _NOT_IN_JSON}
 
 
 def main(argv: list[str] | None = None) -> int:

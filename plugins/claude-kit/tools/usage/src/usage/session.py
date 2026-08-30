@@ -61,6 +61,21 @@ class Call:
 
 
 @dataclass
+class ToolCall:
+    """도구 호출 하나. 이름별 합계로 접기 전의 단위다.
+
+    합계만 남기면 어느 호출이 컨텍스트를 키웠는지 되짚을 수 없다. 셸 명령 원문은 담지 않는다 —
+    API 키와 내부 호스트명이 그대로 들어간다. 파일을 지목한 호출은 그 경로를 담는다.
+    """
+
+    order: int
+    name: str
+    result_chars: int = 0
+    minutes: float = 0.0
+    path: str = ""
+
+
+@dataclass
 class Bash:
     """Bash 호출을 명령을 어떻게 이었는지로 가른 수."""
 
@@ -116,6 +131,7 @@ class Totals:
     images: int = 0
     image_tokens: int = 0
     requests: list[Request] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
     tool_minutes: float = 0.0
     tool_spans: list[tuple[datetime, datetime]] = field(default_factory=list)
     slow_calls: list[Call] = field(default_factory=list)
@@ -382,7 +398,8 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
     read_in: set[tuple[str, str]] = set()
     stamps: list[str] = []
     counted: set[str] = set()
-    named: dict[str, str] = {}
+    named: dict[str, ToolCall] = {}
+    opened_at: dict[str, datetime] = {}
     for i, r in enumerate(rows):
         if r.get("timestamp"):
             stamps.append(r["timestamp"])
@@ -421,7 +438,16 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                 _produced(t, len(block.get("text") or ""))
             if block.get("type") == "tool_use":
                 tools[str(block.get("name"))] += 1
-                named[str(block.get("id"))] = str(block.get("name"))
+                call_id = str(block.get("id"))
+                call = ToolCall(
+                    order=t.requests[-1].order if t.requests else start,
+                    name=str(block.get("name")),
+                    path=str((block.get("input") or {}).get("file_path") or ""),
+                )
+                t.tool_calls.append(call)
+                named[call_id] = call
+                if r.get("timestamp"):
+                    opened_at[call_id] = _moment(str(r["timestamp"]))
                 if answering:
                     _produced(t, len(json.dumps(block.get("input") or {}, ensure_ascii=False)))
                 if t.requests:
@@ -438,10 +464,18 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                         read_in.add((key, path))
                         reads[path] += 1
             elif block.get("type") == "tool_result":
-                name = named.get(str(block.get("tool_use_id")), "?")
+                result_of = str(block.get("tool_use_id"))
+                opened = named.get(result_of)
                 text, images, image_tokens = _result_size(block.get("content"))
                 if text:
-                    chars[name] += text
+                    chars[opened.name if opened else "?"] += text
+                if opened is not None:
+                    opened.result_chars += text
+                    began = opened_at.get(result_of)
+                    if began is not None and r.get("timestamp"):
+                        gap = (_moment(str(r["timestamp"])) - began).total_seconds() / 60
+                        if gap >= 0:
+                            opened.minutes = gap
                 t.images += images
                 t.image_tokens += image_tokens
     t.stale_requests = sum(

@@ -923,7 +923,14 @@ def _png(width: int, height: int) -> bytes:
     )
 
 
-def _tool_call(call_id: str, name: str, usage: dict, ts: str, command: str = "") -> str:
+def _tool_call(
+    call_id: str, name: str, usage: dict, ts: str, command: str = "", path: str = ""
+) -> str:
+    put: dict = {}
+    if command:
+        put["command"] = command
+    if path:
+        put["file_path"] = path
     return _row(
         type="assistant",
         timestamp=ts,
@@ -936,7 +943,7 @@ def _tool_call(call_id: str, name: str, usage: dict, ts: str, command: str = "")
                     "type": "tool_use",
                     "id": call_id,
                     "name": name,
-                    "input": {"command": command} if command else {},
+                    "input": put,
                 }
             ],
         },
@@ -2150,3 +2157,47 @@ def test_marks_stay_inside_the_window_but_keep_absolute_numbers(project: Path) -
         marks_bash=r"/tools/[\w-]+\"?\s+([\w-]+)\s+([\w-]+)",
     )
     assert [(m.order, m.detail) for m in s.marks] == [(3, "beta begin")]
+
+
+def test_each_tool_call_is_kept_as_its_own_row(project: Path) -> None:
+    """호출 하나가 결과를 얼마나 실었고 얼마나 걸렸는지는 합계로 접기 전에 보존한다.
+
+    도구 이름별 합계만 남기면 어느 호출이 컨텍스트를 키웠는지 되짚을 수 없다.
+    """
+    _write_main(
+        project,
+        "s1",
+        [
+            _tool_call(
+                "t1", "Read", _usage(read=100, out=10), "2026-08-20T12:00:00.000Z", path="/w/a.md"
+            ),
+            _result("t1", "가" * 500, "2026-08-20T12:00:30.000Z"),
+            _tool_call(
+                "t2", "Bash", _usage(read=200, out=10), "2026-08-20T12:01:00.000Z", command="ls /w"
+            ),
+            _result("t2", "a.md", "2026-08-20T12:03:00.000Z"),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    calls = s.main.tool_calls
+    assert [(c.order, c.name, c.result_chars, c.path) for c in calls] == [
+        (1, "Read", 500, "/w/a.md"),
+        (2, "Bash", 4, ""),
+    ]
+    assert calls[0].minutes == pytest.approx(0.5)
+    assert calls[1].minutes == pytest.approx(2.0)
+
+
+def test_a_tool_call_without_a_result_is_still_kept(project: Path) -> None:
+    """결과가 돌아오지 않은 호출도 남긴다 — 세션이 그 자리에서 끊긴 것 자체가 사실이다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _tool_call(
+                "t1", "Read", _usage(read=100, out=10), "2026-08-20T12:00:00.000Z", path="/w/a.md"
+            ),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert [(c.name, c.result_chars, c.minutes) for c in s.main.tool_calls] == [("Read", 0, 0.0)]
