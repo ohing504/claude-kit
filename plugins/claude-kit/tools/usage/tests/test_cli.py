@@ -560,7 +560,7 @@ def test_corpus_check_fails_with_a_nonzero_exit_code_on_violation(
     monkeypatch.setattr(
         cli_mod,
         "check",
-        lambda conn: CheckResult(
+        lambda conn, **kwargs: CheckResult(
             scopes=1, violations=[{"session_id": "s1", "agent_id": None, "expected": 1, "got": 2}]
         ),
     )

@@ -199,15 +199,22 @@ def build(
     return Ledger(items=done, eviction_events=eviction_events)
 
 
-def thinking_diagnostic(requests: list[Request], tool_calls: list[ToolCall]) -> tuple[int, int]:
+def thinking_diagnostic(
+    requests: list[Request],
+    tool_calls: list[ToolCall],
+    boundaries: set[int] | None = None,
+) -> tuple[int, int]:
     """`thinking_tokens`가 다음 턴 컨텍스트에서 벗겨지는지 남는지, 두 가설의 오차를 잰다.
 
     도구 호출이 없는 요청만 본다 — growth를 tool 항목이 나눠 갖지 않아 output과 직접 댈 수
-    있다. 가설을 코드(build())에 박지 않고, 요청마다의 오차 합으로만 낸다.
+    있다. 압축 경계를 넘는 요청 쌍도 뺀다 — 그 자리의 growth는 압축이 지운 컨텍스트를
+    반영할 뿐 output/thinking과 무관해, 포함하면 두 가설의 오차 모두가 부풀어 오른다.
+    가설을 코드(build())에 박지 않고, 요청마다의 오차 합으로만 낸다.
 
     가설 A(남는다): `growth ≈ output`. 가설 B(벗겨진다): `growth ≈ output − thinking`.
     반환값은 `(가설 A의 오차 합, 가설 B의 오차 합)` — 작은 쪽이 실제에 더 맞는 가설이다.
     """
+    boundaries = boundaries or set()
     reqs = sorted(requests, key=lambda r: r.order)
     calls_by_order: dict[int, list[ToolCall]] = {}
     for c in tool_calls:
@@ -215,7 +222,7 @@ def thinking_diagnostic(requests: list[Request], tool_calls: list[ToolCall]) -> 
 
     err_kept = err_stripped = 0
     for prev, cur in pairwise(reqs):
-        if calls_by_order.get(prev.order):
+        if calls_by_order.get(prev.order) or cur.order in boundaries:
             continue
         growth = cur.context - prev.context
         err_kept += abs(growth - prev.output)

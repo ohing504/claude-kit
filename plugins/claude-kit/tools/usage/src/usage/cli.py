@@ -369,7 +369,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         with closing(sqlite3.connect(args.db)) as conn:
             if args.check:
-                result = check(conn)
+                result = check(conn, since=args.since, until=args.until, project=args.project)
                 print(
                     _check_report(result)
                     if args.table

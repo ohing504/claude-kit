@@ -467,9 +467,9 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                 # 빈 문자열로 저장돼 셀 것이 없다(스키마 근거는 결정 문서).
                 _produced(t, len(block.get("text") or ""))
             if block.get("type") == "tool_use":
-                tools[str(block.get("name"))] += 1
-                call_id = str(block.get("id"))
                 name = str(block.get("name"))
+                tools[name] += 1
+                call_id = str(block.get("id"))
                 call = ToolCall(
                     order=t.requests[-1].order if t.requests else start,
                     name=name,

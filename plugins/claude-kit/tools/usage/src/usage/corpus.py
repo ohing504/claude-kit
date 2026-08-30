@@ -144,7 +144,7 @@ def _load_scope(
         date=date,
         ledger=ledger,
         contexts=[r.context for r in requests],
-        thinking_diag=thinking_diagnostic(requests, tool_calls),
+        thinking_diag=thinking_diagnostic(requests, tool_calls, boundaries),
     )
 
 
@@ -301,7 +301,7 @@ def by_compaction(scopes: Iterator[Scope]) -> list[Bucket]:
             b.sessions.add(scope.session_id)
             if b.example is None:
                 b.example = Example(session_id=scope.session_id, order=item.start_order)
-    return sorted(buckets.values(), key=lambda b: b.key)
+    return sorted(buckets.values(), key=lambda b: int(b.key.split()[1]))
 
 
 _GROUP_KEYS = ("first-skill", "agent-kind", "project")
@@ -434,14 +434,19 @@ class CheckResult:
         return not self.violations
 
 
-def check(conn: sqlite3.Connection) -> CheckResult:
+def check(
+    conn: sqlite3.Connection,
+    since: str | None = None,
+    until: str | None = None,
+    project: str | None = None,
+) -> CheckResult:
     """항등식 `Σ(잔존) == Σ context_tokens`이 스코프마다 오차 0으로 성립하는지 본다.
 
     양변을 독립적으로 낸다 — 잔존 총합은 원장(`residual.build()`)에서, 비교 대상은 인덱스에
     실제 적재된 `context_tokens`에서 그대로 합해, 원장 스스로를 되읽는 동어반복을 피한다.
     """
     result = CheckResult()
-    for scope in iter_scopes(conn):
+    for scope in iter_scopes(conn, since=since, until=until, project=project):
         result.scopes += 1
         result.eviction_events += scope.ledger.eviction_events
         result.total_residual += scope.ledger.total_residual
