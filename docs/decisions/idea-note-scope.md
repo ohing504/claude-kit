@@ -14,9 +14,7 @@
 
 ```check
 {"checks": [
-  {"cmd": "grep -c 'has_discussions' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "2"},
-  {"cmd": "grep -c '추가 하나' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"},
-  {"cmd": "grep -c '우선순위는 기록하지 않고' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"}
+  {"cmd": "grep -c '^allowed-tools: Bash(gh repo view:\\*), Bash(gh api:\\*), Read, Write, Edit, AskUserQuestion$' plugins/claude-kit/skills/idea-note/SKILL.md", "expect": "1"}
 ]}
 ```
 

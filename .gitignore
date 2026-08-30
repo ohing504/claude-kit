@@ -6,6 +6,7 @@ node_modules/
 
 # python 바이트코드 — hook 판정부를 테스트에서 import할 때 생긴다
 __pycache__/
+plugins/claude-kit/tools/usage/.venv/
 
 /data/
 /.scratch/

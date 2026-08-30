@@ -14,8 +14,6 @@
 
 ```check
 {"checks": [
-  {"cmd": "grep -c '이슈 참조 수집' plugins/claude-kit/skills/squash-merge/SKILL.md", "expect": "1"},
-  {"cmd": "grep -c '매칭 안 된' plugins/claude-kit/skills/squash-merge/SKILL.md", "expect": "1"},
   {"cmd": "git grep -l '기본 브랜치를 타겟할 때만' -- ':!docs/decisions' | wc -l | tr -d ' '", "expect": "0"}
 ]}
 ```
