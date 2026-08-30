@@ -45,6 +45,7 @@ class Request:
     input: int = 0
     cache_read: int = 0
     cache_write: int = 0
+    thinking: int = 0
 
 
 @dataclass
@@ -78,6 +79,7 @@ class ToolCall:
     result_chars: int = 0
     minutes: float = 0.0
     path: str = ""
+    target: str = ""
 
 
 @dataclass
@@ -355,6 +357,13 @@ def _patch_tokens(width: int, height: int) -> int:
     return min(tokens, _MAX_IMAGE_TOKENS)
 
 
+# 도구 이름별로 `target`에 담을 입력 키. 셸 명령(`command`)과 자유 서술(`prompt`, `description`)은
+# 비밀이나 개인정보를 실을 수 있어 여기 없는 도구는 늘 빈 문자열이다.
+_TARGET_KEY: dict[str, str] = {
+    "Skill": "skill",
+    "Agent": "subagent_type",
+}
+
 _USAGE_FIELDS = (
     "input_tokens",
     "output_tokens",
@@ -420,6 +429,10 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
         if message.get("usage") and key not in counted:
             counted.add(key)
             u = merged[key]
+            if not any(u.get(name, 0) for name in _USAGE_FIELDS):
+                # 토큰 4종이 전부 0인 행(`<synthetic>` 등)은 API 호출이 아니다 — 세면 호출
+                # 수가 부풀고 그 자리의 컨텍스트 급락이 압축으로 오판된다.
+                continue
             t.calls += 1
             model = str(message.get("model") or "?")
             models[model] += 1
@@ -442,6 +455,7 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                     input=u.get("input_tokens", 0),
                     cache_read=u.get("cache_read_input_tokens", 0),
                     cache_write=u.get("cache_creation_input_tokens", 0),
+                    thinking=u.get("thinking", 0),
                 )
             )
         answering = r.get("type") == "assistant"
@@ -453,12 +467,14 @@ def _tally(rows: list[dict], start: int = 0) -> Totals:
                 # 빈 문자열로 저장돼 셀 것이 없다(스키마 근거는 결정 문서).
                 _produced(t, len(block.get("text") or ""))
             if block.get("type") == "tool_use":
-                tools[str(block.get("name"))] += 1
+                name = str(block.get("name"))
+                tools[name] += 1
                 call_id = str(block.get("id"))
                 call = ToolCall(
                     order=t.requests[-1].order if t.requests else start,
-                    name=str(block.get("name")),
+                    name=name,
                     path=str((block.get("input") or {}).get("file_path") or ""),
+                    target=str((block.get("input") or {}).get(_TARGET_KEY.get(name, "")) or ""),
                 )
                 t.tool_calls.append(call)
                 named[call_id] = call

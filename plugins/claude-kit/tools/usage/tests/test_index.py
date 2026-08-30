@@ -107,6 +107,134 @@ def test_shell_command_text_is_never_stored(root: Path) -> None:
     assert _query(db, "SELECT tool_name, file_path FROM tool_calls") == [("Bash", "")]
 
 
+def test_a_skill_call_row_names_the_skill(root: Path) -> None:
+    """스킬 이름이 인덱스에 남지 않으면 스킬별 잔존 비용 순위를 낼 수 없다."""
+    (root / "-Users-x-repo" / "s1.jsonl").write_text(
+        _assistant(
+            _usage(read=100, out=10),
+            "2026-08-20T12:00:00.000Z",
+            "m1",
+            [{"type": "tool_use", "id": "t1", "name": "Skill", "input": {"skill": "demo:stage"}}],
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    assert _query(db, "SELECT tool_name, target FROM tool_calls") == [("Skill", "demo:stage")]
+
+
+def test_an_agent_call_row_names_the_subagent_type(root: Path) -> None:
+    """서브에이전트 종류가 남지 않으면 종류별 잔존 비용 순위를 낼 수 없다."""
+    (root / "-Users-x-repo" / "s1.jsonl").write_text(
+        _assistant(
+            _usage(read=100, out=10),
+            "2026-08-20T12:00:00.000Z",
+            "m1",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "t1",
+                    "name": "Agent",
+                    "input": {"subagent_type": "reviewer", "description": "검토"},
+                }
+            ],
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    assert _query(db, "SELECT tool_name, target FROM tool_calls") == [("Agent", "reviewer")]
+
+
+def test_a_shell_command_never_reaches_the_target_column(root: Path) -> None:
+    """`target`도 셸 명령 원문을 담지 않는다 — API 키와 내부 호스트명이 그대로 들어간다."""
+    (root / "-Users-x-repo" / "s1.jsonl").write_text(
+        _assistant(
+            _usage(read=100, out=10),
+            "2026-08-20T12:00:00.000Z",
+            "m1",
+            [
+                {
+                    "type": "tool_use",
+                    "id": "t1",
+                    "name": "Bash",
+                    "input": {"command": "curl -H 'x-api-key: sk-비밀' https://내부호스트/x"},
+                }
+            ],
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    assert "sk-비밀" not in db.read_bytes().decode("utf-8", "replace")
+    assert _query(db, "SELECT tool_name, target FROM tool_calls") == [("Bash", "")]
+
+
+def test_a_request_row_keeps_its_thinking_tokens(root: Path) -> None:
+    """thinking을 안 담으면 다음 턴 컨텍스트에 남는지 벗겨지는지를 코퍼스 차원에서 판정할 수 없다."""
+    (root / "-Users-x-repo" / "s1.jsonl").write_text(
+        _row(
+            type="assistant",
+            timestamp="2026-08-20T12:00:00.000Z",
+            message={
+                "role": "assistant",
+                "model": "claude-opus-5",
+                "id": "m1",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 500,
+                    "cache_read_input_tokens": 1000,
+                    "cache_creation_input_tokens": 0,
+                    "output_tokens_details": {"thinking_tokens": 300},
+                },
+                "content": [],
+            },
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    index_corpus(root, db)
+    assert _query(db, "SELECT thinking_tokens FROM requests") == [(300,)]
+
+
+def test_a_database_from_an_older_schema_is_rebuilt(root: Path) -> None:
+    """스키마가 바뀌면 옛 열이 없던 행이 새 열에 빈 값인 채로 섞이면 안 된다 — 크기와 시각이
+    같아도 전건 다시 읽는다."""
+    p = root / "-Users-x-repo" / "s1.jsonl"
+    p.write_text(
+        _assistant(
+            _usage(read=100, out=10),
+            "2026-08-20T12:00:00.000Z",
+            "m1",
+            [{"type": "tool_use", "id": "t1", "name": "Skill", "input": {"skill": "demo:stage"}}],
+        ),
+        encoding="utf-8",
+    )
+    db = root.parent / "index.db"
+    stat = p.stat()
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "CREATE TABLE sessions (session_id TEXT PRIMARY KEY, project_slug TEXT NOT NULL,"
+            " file_path TEXT NOT NULL, total_size INTEGER NOT NULL, latest_mtime REAL NOT NULL,"
+            " indexed_at TEXT NOT NULL, status TEXT NOT NULL, error_message TEXT)"
+        )
+        conn.execute(
+            "CREATE TABLE tool_calls (id INTEGER PRIMARY KEY, session_id TEXT NOT NULL,"
+            " agent_id TEXT, order_in_scope INTEGER NOT NULL, tool_name TEXT NOT NULL,"
+            " file_path TEXT NOT NULL, result_chars INTEGER NOT NULL, minutes REAL NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO sessions VALUES ('s1', '-Users-x-repo', ?, ?, ?,"
+            " '2026-08-20T12:00:00+00:00', 'ok', NULL)",
+            (str(p), stat.st_size, stat.st_mtime),
+        )
+        conn.commit()
+    index_corpus(root, db)
+    assert _query(db, "SELECT tool_name, target FROM tool_calls WHERE session_id = 's1'") == [
+        ("Skill", "demo:stage")
+    ]
+
+
 def test_a_session_with_no_usage_row_is_marked_empty(root: Path) -> None:
     """수치가 한 건도 없는 파일은 오류가 아니라 잴 것이 없는 상태다."""
     (root / "-Users-x-repo" / "s1.jsonl").write_text(

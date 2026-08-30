@@ -1049,6 +1049,129 @@ def test_small_context_dips_are_not_compaction(project: Path) -> None:
     assert s.compaction_at == []
 
 
+def test_a_row_whose_usage_is_all_zero_is_not_a_request(project: Path) -> None:
+    """`<synthetic>` 같은 행은 usage dict가 있지만 토큰 4종이 전부 0이다 — 세면 호출 수가 부풀고
+    그 자리가 컨텍스트 급락(압축)으로 오판된다. 모델명이 아니라 값으로 거른다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _assistant(_usage(read=90_000, out=50), "2026-08-20T12:00:00.000Z"),
+            _row(
+                type="assistant",
+                timestamp="2026-08-20T12:00:30.000Z",
+                message={
+                    "role": "assistant",
+                    "model": "<synthetic>",
+                    "usage": _usage(),
+                    "content": [],
+                },
+            ),
+            _assistant(_usage(read=95_000, out=50), "2026-08-20T12:01:00.000Z"),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert s.main.calls == 2
+    assert [r.order for r in s.main.requests] == [1, 2]
+    assert [r.context for r in s.main.requests] == [90_000, 95_000]
+
+
+def test_a_zero_usage_row_is_not_a_compaction(project: Path) -> None:
+    """전 0 usage 행이 만드는 가짜 컨텍스트 급락을 압축으로 잡지 않는다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _assistant(_usage(read=200_000, out=50), "2026-08-20T12:00:00.000Z"),
+            _row(
+                type="assistant",
+                timestamp="2026-08-20T12:00:30.000Z",
+                message={
+                    "role": "assistant",
+                    "model": "<synthetic>",
+                    "usage": _usage(),
+                    "content": [],
+                },
+            ),
+            _assistant(_usage(read=210_000, out=50), "2026-08-20T12:01:00.000Z"),
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert s.compaction_at == []
+
+
+def test_a_skill_call_keeps_which_skill_it_loaded(project: Path) -> None:
+    """스킬 이름이 남지 않으면 스킬별 잔존 비용 순위를 낼 수 없다."""
+    _write_main(project, "s1", [_skill_call("demo:stage", "2026-08-20T12:00:00.000Z")])
+    s = read_session(find_transcript("s1", project.parent))
+    assert [c.target for c in s.main.tool_calls if c.name == "Skill"] == ["demo:stage"]
+
+
+def test_an_agent_call_keeps_the_subagent_type(project: Path) -> None:
+    """서브에이전트 종류가 남지 않으면 종류별 잔존 비용 순위를 낼 수 없다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _row(
+                type="assistant",
+                timestamp="2026-08-20T12:00:00.000Z",
+                message={
+                    "role": "assistant",
+                    "model": "claude-opus-5",
+                    "usage": _usage(read=100, out=1),
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "a1",
+                            "name": "Agent",
+                            "input": {"subagent_type": "reviewer", "description": "검토"},
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert [c.target for c in s.main.tool_calls if c.name == "Agent"] == ["reviewer"]
+
+
+def test_a_shell_call_keeps_no_target(project: Path) -> None:
+    """`target`은 도구별 키 화이트리스트로만 채운다 — Bash의 `command`는 비밀을 실을 수 있어
+    화이트리스트에 없다."""
+    _write_main(project, "s1", [_tool_bash("echo hi", "2026-08-20T12:00:00.000Z")])
+    s = read_session(find_transcript("s1", project.parent))
+    assert [c.target for c in s.main.tool_calls if c.name == "Bash"] == [""]
+
+
+def test_each_request_keeps_the_thinking_it_spent(project: Path) -> None:
+    """요청별 thinking 없이는 그것이 다음 컨텍스트에 남는지 벗겨지는지 판정할 근거가 없다."""
+    _write_main(
+        project,
+        "s1",
+        [
+            _row(
+                type="assistant",
+                timestamp="2026-08-20T12:00:00.000Z",
+                message={
+                    "role": "assistant",
+                    "model": "claude-opus-5",
+                    "usage": {
+                        "input_tokens": 10,
+                        "output_tokens": 500,
+                        "cache_read_input_tokens": 1000,
+                        "cache_creation_input_tokens": 0,
+                        "output_tokens_details": {"thinking_tokens": 300},
+                    },
+                    "content": [],
+                },
+            )
+        ],
+    )
+    s = read_session(find_transcript("s1", project.parent))
+    assert [r.thinking for r in s.main.requests] == [300]
+
+
 def test_result_size_goes_to_the_tool_that_produced_it(project: Path) -> None:
     """도구 결과는 `tool_use_id`로 귀속한다 — 직전 호출에 붙이면 결과가 엉뚱한 도구로 간다."""
     _write_main(

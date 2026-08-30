@@ -98,6 +98,60 @@ teammate 세션 파일은 `sessions.status`에 `teammate`로 남고 요청과 �
 데이터베이스 기본 위치는 `~/.claude/usage-index.db`이고 `--db`로 바꾼다. **저장소 안에 두지
 않는다** — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다.
 
+## `usage corpus`
+
+```bash
+usage corpus                                  # 축마다 요약을 낸다
+usage corpus --by skill|agent|tool|file|project|period|length|compaction|spread
+usage corpus --by spread --group-by first-skill|agent-kind|project   # 기본 project
+usage corpus --top N --since YYYY-MM-DD --until YYYY-MM-DD --project <슬러그>
+usage corpus --table                          # 사람이 읽을 표로
+usage corpus --check                          # 항등식 위반을 찾는다
+```
+
+`usage index`가 적재한 데이터베이스를 읽어 세션(과 그 안의 서브에이전트) 하나마다 잔존 비용
+원장을 만들고, 그것을 축으로 접어 순위를 낸다. 기본 출력은 JSON이고 `--table`이 사람용이다.
+`teammate`, `error`, `empty` 상태의 세션은 뺀다 — `teammate`는 메인 세션의 서브에이전트 행으로
+이미 들어가 있어 자기 세션으로 또 담으면 같은 요청이 두 번 세어진다.
+
+**잔존 비용**은 `크기 × 그 항목이 컨텍스트에 남아 있던 요청 수`다. 도구 결과나 요청 하나의
+컨텍스트 증가분(`growth`)이 같은 크기라도, 스코프 초반에 실려 오래 남을수록 잔존은 더 크다 —
+크기만 보는 순위와 잔존으로 보는 순위가 갈리는 지점이 바로 "호출 시점 때문에 비싼 것"이다.
+계산 규칙의 정본은 `tests/test_residual.py`다.
+
+각 축의 행은 `size`(원 크기 합), `count`(항목 수), `sessions`(걸친 세션 수), `example`(그
+값이 나온 세션 ID와 요청 번호)을 함께 내 원본 세션 파일로 되짚을 수 있다.
+
+- **`skill`, `tool`, `file`, `project`**: 그 이름으로 접어 잔존 순위를 낸다.
+- **`period`**: 메인 스코프만 월별로 접는다.
+- **`length`**: 요청 수 구간(1-20, 21-50, 51-100, 101-300, 301+)별 **요청당 평균 잔존**을 낸다.
+  합계는 요청 수에 비례해 늘 커지므로 평균으로만 비교한다.
+- **`compaction`**: 압축 세그먼트별로 접는다 — 압축이 몇 번, 어느 구간이 비싼지를 본다.
+- **`spread`**: `--group-by`로 고른 키(스코프의 첫 `Skill` 호출, 서브에이전트 종류, 프로젝트)로
+  세션들을 묶어 편차를 본다.
+- **`agent`**: 서브에이전트 종류별로 두 값을 나란히 낸다 — `paid_by_parent`(부모 스코프에서
+  `Agent` 호출이 낸 보고서의 잔존)와 `spent_by_self`(그 종류의 서브에이전트가 자기 스코프에서
+  쓴 잔존 총합). 둘은 서로 다른 스코프에서 나와 같은 호출을 1:1로 가리킨다는 보장은 없다.
+
+`--check`는 스코프마다 `Σ(원장 항목의 잔존) == Σ(그 스코프 요청들의 실측 context_tokens)`가
+오차 0으로 성립하는지 본다. 어긋나면 위반으로 낸다. 함께 내는 `eviction_events`(압축이 아닌
+컨텍스트 감소로 항목이 퇴장한 횟수)가 크면 원장 모델이 실제 세션과 어긋난다는 신호이고,
+`unattributed_residual`은 어느 도구에도 안 붙는 성장(사용자 발화, 붙여넣기)의 비중이다.
+위반이 있으면 종료 코드가 0이 아니다.
+
+`thinking_residual_as_kept`와 `thinking_residual_as_stripped`는 `thinking_tokens`가 다음 턴
+컨텍스트에서 벗겨지는지 남는지를 판정하는 진단이다. 도구 호출 없는 요청만 모아 가설 A
+(`growth ≈ output`, 남는다)와 가설 B(`growth ≈ output − thinking`, 벗겨진다)의 오차 합을
+따로 내고, 작은 쪽이 실제에 더 맞는 가설이다. 이 가설은 `residual.build()`에 박혀 있지
+않다 — 두 값을 보고 정한다.
+
+**`base`는 못 쪼갠다.** 요청 1의 컨텍스트(시스템 프롬프트, 지침, 메모리)는 세션 기록에 내부
+구성이 안 남아 하나의 항목으로만 잡힌다. `project` 축의 `base` 크기 차이는 그 저장소의
+지침과 메모리 크기 차이에 대한 근사일 뿐이다.
+
+**웹 검색과 페이지 읽기는 세션 기록에 안 남는다.** `usage corpus`의 모든 수치는 세션 기록에
+남은 것만 잰다.
+
 ## 내지 않는 것
 
 - **금액** — 구독 크레딧으로 실행되므로 API 정가를 곱한 값이 실제 청구와 자릿수가 맞지 않는다

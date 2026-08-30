@@ -475,3 +475,96 @@ def test_index_builds_the_database_at_the_given_path(tmp_path: Path, capsys) -> 
         "failed": 0,
         "teammate": 0,
     }
+
+
+def _seeded_db(tmp_path: Path) -> Path:
+    """스킬 호출 하나가 든 세션 하나짜리 인덱스. `corpus`가 그 위에서 무엇을 내는지 본다."""
+    from usage.index import _connect
+
+    db = tmp_path / "index.db"
+    conn = _connect(db)
+    conn.execute(
+        "INSERT INTO sessions (session_id, project_slug, file_path, total_size, latest_mtime,"
+        " indexed_at, status) VALUES ('s1', 'proj', '', 0, 0, '', 'ok')"
+    )
+    conn.executemany(
+        "INSERT INTO requests (session_id, agent_id, order_in_scope, timestamp, model,"
+        " input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,"
+        " produced_chars, context_tokens, is_compaction_boundary)"
+        " VALUES (?, NULL, ?, ?, '', 0, 0, 0, 0, 0, 0, ?, 0)",
+        [
+            ("s1", 1, "2026-08-20T00:00:00Z", 1_000),
+            ("s1", 2, "2026-08-20T00:01:00Z", 1_200),
+        ],
+    )
+    conn.execute(
+        "INSERT INTO tool_calls (session_id, agent_id, order_in_scope, tool_name, file_path,"
+        " target, result_chars, minutes) VALUES ('s1', NULL, 1, 'Skill', '', 'commit', 200, 0)"
+    )
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_corpus_default_output_is_json(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--by", "skill"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["skill"][0]["key"] == "commit"
+    assert out["skill"][0]["residual"] == 200
+
+
+def test_corpus_table_is_opt_in(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--by", "skill", "--table"]) == 0
+    out = capsys.readouterr().out
+    assert "commit" in out
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(out)
+
+
+def test_corpus_with_no_by_summarizes_every_axis(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert {"skill", "tool", "file", "project", "agent"} <= out.keys()
+
+
+def test_corpus_rejects_an_unknown_axis(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    with pytest.raises(SystemExit):
+        main(["corpus", "--db", str(db), "--by", "nonsense"])
+
+
+def test_corpus_group_by_without_spread_is_rejected(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--by", "skill", "--group-by", "project"]) == 1
+    assert "spread" in capsys.readouterr().err
+
+
+def test_corpus_check_passes_with_exit_code_zero(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--check"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is True
+    assert out["violations"] == []
+
+
+def test_corpus_check_fails_with_a_nonzero_exit_code_on_violation(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import usage.cli as cli_mod
+    from usage.corpus import CheckResult
+
+    db = _seeded_db(tmp_path)
+    monkeypatch.setattr(
+        cli_mod,
+        "check",
+        lambda conn, **kwargs: CheckResult(
+            scopes=1, violations=[{"session_id": "s1", "agent_id": None, "expected": 1, "got": 2}]
+        ),
+    )
+    assert main(["corpus", "--db", str(db), "--check"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["ok"] is False
+    assert len(out["violations"]) == 1
