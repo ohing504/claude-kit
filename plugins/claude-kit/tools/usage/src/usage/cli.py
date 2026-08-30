@@ -235,6 +235,22 @@ def _serializable(items: list[tuple[str, object]]) -> dict[str, object]:
     return {k: v for k, v in items if k not in _NOT_IN_JSON}
 
 
+# 웹 검색, 페이지 읽기처럼 세션 기록(jsonl)에 남지 않는 소비가 있다 — `usage`가 내는 모든
+# 수치에는 이 경계가 붙는다. 청구 총액과 대조하면 어긋나고, 그것은 결함이 아니라 자료의 한계다.
+_MEASURED = (
+    "이 값은 세션 기록(~/.claude/projects/**/*.jsonl)에 남은 것만 잰다."
+    " 웹 검색, 페이지 읽기 같은 내부 경로의 소비는 기록에 남지 않아 여기 포함되지 않는다."
+)
+
+
+def _summary_line(s: dict[str, Any]) -> str:
+    pct = s["compaction_ratio"] * 100
+    return (
+        f"요약  세션 {s['sessions']}개(압축 {s['sessions_with_compaction']}개, {pct:.1f}%),"
+        f" 스코프 {s['scopes']}개, 요청 {_n(int(s['requests']))}개"
+    )
+
+
 # 인덱스는 저장소 안에 두지 않는다 — 세션 기록에는 실제 파일 경로와 작업 내용이 들어간다.
 _DEFAULT_DB = Path.home() / ".claude" / "usage-index.db"
 _DEFAULT_ROOT = Path.home() / ".claude" / "projects"
@@ -277,6 +293,7 @@ def _add_corpus(p: argparse.ArgumentParser) -> None:
 
 def _check_dict(r: CheckResult) -> dict[str, object]:
     return {
+        "measured": _MEASURED,
         "ok": r.ok,
         "scopes": r.scopes,
         "eviction_events": r.eviction_events,
@@ -290,6 +307,7 @@ def _check_dict(r: CheckResult) -> dict[str, object]:
 
 def _check_report(r: CheckResult) -> str:
     lines = [
+        _MEASURED,
         f"스코프 {r.scopes}개, 위반 {len(r.violations)}건",
         f"잔존 총합 {_n(r.total_residual)}, 퇴장 {r.eviction_events}건,"
         f" unattributed {_n(r.unattributed_residual)}",
@@ -308,6 +326,14 @@ def _corpus_row(row: dict[str, Any]) -> str:
             f"{_pad(str(row['kind']), 24)} {_pad(_n(int(row['paid_by_parent'])), 10, True)}"
             f" {_pad(_n(int(row['spent_by_self'])), 10, True)} calls={row['calls']} scopes={row['scopes']}"
         )
+    if "mean" in row:  # --by spread
+        example = row.get("example")
+        where = f"{example['session_id']}#{example['order']}" if example else ""
+        return (
+            f"{_pad(str(row['key']), 24)} {_pad(_n(int(row['residual'])), 10, True)}"
+            f" scopes={row['scopes']} mean={row['mean']:.0f} min={row['min']:.0f}"
+            f" median={row['median']:.0f} p95={row['p95']:.0f} max={row['max']:.0f} {where}"
+        )
     example = row.get("example")
     where = f"{example['session_id']}#{example['order']}" if example else ""
     return (
@@ -317,7 +343,10 @@ def _corpus_row(row: dict[str, Any]) -> str:
 
 
 def _corpus_report(data: dict[str, object]) -> str:
-    lines = []
+    lines = [_MEASURED]
+    summary_row = data.get("summary")
+    if isinstance(summary_row, dict):
+        lines.append(_summary_line(summary_row))
     for axis, rows in data.items():
         if not isinstance(rows, list):
             continue
@@ -388,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             _corpus_report(trimmed)
             if args.table
-            else json.dumps(trimmed, ensure_ascii=False, indent=2)
+            else json.dumps({"measured": _MEASURED} | trimmed, ensure_ascii=False, indent=2)
         )
         return 0
     if args.marks_bash is not None:
@@ -428,14 +457,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.marks:
         print(_marks_report(s))
     elif args.table:
+        print(_MEASURED)
         print(_report(s))
     else:
-        out = asdict(s, dict_factory=_serializable) | {
-            "path": str(s.path),
-            "idle_minutes": s.idle_minutes,
-            "working_minutes": s.working_minutes,
-            "combined": asdict(s.combined, dict_factory=_serializable),
-        }
+        out = (
+            {"measured": _MEASURED}
+            | asdict(s, dict_factory=_serializable)
+            | {
+                "path": str(s.path),
+                "idle_minutes": s.idle_minutes,
+                "working_minutes": s.working_minutes,
+                "combined": asdict(s.combined, dict_factory=_serializable),
+            }
+        )
         print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
 

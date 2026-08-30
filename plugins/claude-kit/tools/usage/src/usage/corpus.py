@@ -7,7 +7,9 @@
 들어간 요청이 자기 세션으로 또 담겨 두 번 세어진다.
 """
 
+import math
 import sqlite3
+import statistics
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -176,6 +178,24 @@ def iter_scopes(
             yield _load_scope(conn, session_id, agent_id, project_slug, agent_kind=kind)
 
 
+def summary(scopes: list[Scope]) -> dict[str, object]:
+    """필터가 적용된 코퍼스 자체를 서술한다. 축별 순위와 달리 항목을 하나로 접지 않는다.
+
+    압축 여부는 `residual.build()`가 이미 매긴 `Item.segment`로 본다 — 경계가 있으면
+    그 뒤로 열리는 항목의 `segment`가 0보다 커진다. `is_compaction_boundary`를 다시 묻지 않는다.
+    """
+    mains = [s for s in scopes if s.agent_id is None]
+    sessions = len(mains)
+    compacted = sum(1 for s in mains if any(i.segment > 0 for i in s.ledger.items))
+    return {
+        "sessions": sessions,
+        "sessions_with_compaction": compacted,
+        "compaction_ratio": (compacted / sessions) if sessions else 0.0,
+        "scopes": len(scopes),
+        "requests": sum(s.request_count for s in scopes),
+    }
+
+
 def _bucket_by(buckets: dict[str, Bucket], key: str) -> Bucket:
     if key not in buckets:
         buckets[key] = Bucket(key=key)
@@ -307,16 +327,59 @@ def by_compaction(scopes: Iterator[Scope]) -> list[Bucket]:
 _GROUP_KEYS = ("first-skill", "agent-kind", "project")
 
 
-def by_spread(scopes: Iterator[Scope], group_by: str) -> list[Bucket]:
+@dataclass
+class SpreadBucket:
+    """`group_by` 그룹 하나. 요청 하나당 잔존의 분포를 낸다 — 평균만 내면 같은 종류의 작업이
+
+    한 번은 싸고 한 번은 비쌌다는 사실이 사라진다. 어느 작업이 같은 종류인지는 인덱스에
+    없으므로 대리키(첫 스킬/서브에이전트 종류/프로젝트)로 묶고, 그것이 실제로 같은 종류인지는
+    리포트를 읽는 쪽이 판정한다.
+    """
+
+    key: str
+    residual: int = 0  # 그룹 총 잔존. 다른 축과 같은 기준(총량)으로 정렬한다
+    scopes: int = 0
+    mean: float = 0.0
+    minimum: float = 0.0
+    median: float = 0.0
+    p95: float = 0.0
+    maximum: float = 0.0
+    example: Example | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "key": self.key,
+            "residual": self.residual,
+            "scopes": self.scopes,
+            "mean": self.mean,
+            "min": self.minimum,
+            "median": self.median,
+            "p95": self.p95,
+            "max": self.maximum,
+            "example": {"session_id": self.example.session_id, "order": self.example.order}
+            if self.example
+            else None,
+        }
+
+
+def _p95(values_sorted: list[float]) -> float:
+    """nearest-rank 방식. 표본 하나짜리 그룹에서도 정의된다."""
+    idx = max(0, min(len(values_sorted) - 1, math.ceil(0.95 * len(values_sorted)) - 1))
+    return values_sorted[idx]
+
+
+def by_spread(scopes: Iterator[Scope], group_by: str) -> list[SpreadBucket]:
     """`group_by`로 나눈 스코프 사이에서 요청 하나당 잔존이 얼마나 벌어지는지.
 
     인덱스에 작업 종류 라벨이 없으므로 도출 가능한 키만 받는다: 첫 스킬, 서브에이전트 종류,
-    프로젝트. 값은 편차 자체가 아니라 그룹별 평균이다 — 편차는 `--table` 출력에서 여러 행을
-    나란히 놓고 눈으로 본다.
+    프로젝트. 정렬은 그룹 총 잔존 내림차순이다 — `--top`으로 잘릴 때 총량이 큰 것이 남아야
+    고칠 가치가 있는 것이 살아남는다. 편차 자체로 정렬하지 않는다.
     """
     if group_by not in _GROUP_KEYS:
         raise ValueError(f"모르는 --group-by 값: {group_by}")
-    buckets: dict[str, Bucket] = {}
+    totals: dict[str, int] = {}
+    per_request: dict[str, list[float]] = {}
+    examples: dict[str, Example] = {}
     for scope in scopes:
         if group_by == "project":
             key = scope.project_slug
@@ -330,16 +393,29 @@ def by_spread(scopes: Iterator[Scope], group_by: str) -> list[Bucket]:
         n = scope.request_count
         if n == 0:
             continue
-        b = _bucket_by(buckets, key)
-        b.residual += scope.ledger.total_residual
-        b.size += n
-        b.count += 1
-        b.sessions.add(scope.session_id)
-        if b.example is None and scope.ledger.items:
-            b.example = Example(
+        totals[key] = totals.get(key, 0) + scope.ledger.total_residual
+        per_request.setdefault(key, []).append(scope.ledger.total_residual / n)
+        if key not in examples and scope.ledger.items:
+            examples[key] = Example(
                 session_id=scope.session_id, order=scope.ledger.items[0].start_order
             )
-    return sorted(buckets.values(), key=lambda b: b.residual, reverse=True)
+    buckets = []
+    for key, values in per_request.items():
+        values_sorted = sorted(values)
+        buckets.append(
+            SpreadBucket(
+                key=key,
+                residual=totals[key],
+                scopes=len(values),
+                mean=statistics.mean(values),
+                minimum=values_sorted[0],
+                median=statistics.median(values),
+                p95=_p95(values_sorted),
+                maximum=values_sorted[-1],
+                example=examples.get(key),
+            )
+        )
+    return sorted(buckets, key=lambda b: b.residual, reverse=True)
 
 
 _BY_FUNCS = {
@@ -361,18 +437,25 @@ def report(
     project: str | None = None,
     group_by: str | None = None,
 ) -> dict[str, object]:
-    """`--by`가 없으면 전 축 요약, 있으면 그 축의 순위. 스코프는 한 번만 만든다."""
+    """`--by`가 없으면 전 축 요약, 있으면 그 축의 순위. 스코프는 한 번만 만든다.
+
+    `summary`는 `--by`와 무관하게 항상 실린다 — 어느 축을 보든 그 값이 코퍼스 전체 중
+    무엇을 필터링한 결과인지가 함께 있어야 순위 수치를 오독하지 않는다.
+    """
     scopes = list(iter_scopes(conn, since=since, until=until, project=project))
+    base: dict[str, object] = {"summary": summary(scopes)}
     if by == "agent":
-        return {"agent": by_agent(scopes)}
+        return base | {"agent": by_agent(scopes)}
     if by == "spread":
         gb = group_by or "project"
-        return {"spread": [b.as_dict() for b in by_spread(iter(scopes), gb)], "group_by": gb}
+        return base | {"spread": [b.as_dict() for b in by_spread(iter(scopes), gb)], "group_by": gb}
     if by is not None:
-        return {by: [b.as_dict() for b in _BY_FUNCS[by](iter(scopes))]}
-    return {name: [b.as_dict() for b in func(iter(scopes))] for name, func in _BY_FUNCS.items()} | {
-        "agent": by_agent(scopes)
-    }
+        return base | {by: [b.as_dict() for b in _BY_FUNCS[by](iter(scopes))]}
+    return (
+        base
+        | {name: [b.as_dict() for b in func(iter(scopes))] for name, func in _BY_FUNCS.items()}
+        | {"agent": by_agent(scopes)}
+    )
 
 
 @dataclass

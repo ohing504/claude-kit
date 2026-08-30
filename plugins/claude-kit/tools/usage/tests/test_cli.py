@@ -523,6 +523,19 @@ def test_corpus_table_is_opt_in(tmp_path: Path, capsys) -> None:
         json.loads(out)
 
 
+def test_corpus_output_carries_the_measurement_boundary(tmp_path: Path, capsys) -> None:
+    db = _seeded_db(tmp_path)
+    assert main(["corpus", "--db", str(db), "--by", "skill"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert "세션 기록" in out["measured"]
+
+
+def test_session_output_carries_the_measurement_boundary(transcript: Path, capsys) -> None:
+    assert main(["session", str(transcript)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert "세션 기록" in out["measured"]
+
+
 def test_corpus_with_no_by_summarizes_every_axis(tmp_path: Path, capsys) -> None:
     db = _seeded_db(tmp_path)
     assert main(["corpus", "--db", str(db)]) == 0
