@@ -1,10 +1,10 @@
 # 언어를 가리지 않는 배치 판정
 
-패키지 안의 모듈을 어떻게 묶고 이름 짓는지. 판정 다섯 개다.
+패키지 안의 모듈을 어떻게 묶고 이름 짓는지.
 
 ## 1. 폴더는 관심사나 도메인에만 만든다
 
-폴더를 만들 근거는 셋뿐이다.
+폴더를 만들 근거는 다음뿐이다.
 
 - **한 관심사에 파일이 여럿** — 출력 형식을 다루는 파일이 넷이면 `output/`
 - **도메인 경계** — `installation/`, `publishing/`
@@ -31,7 +31,7 @@
 
 파일 25개짜리에 폴더 4개를 만들면 폴더마다 평균 6개가 들어간다. import 경로만 길어지고 파일을 찾는 비용은 줄지 않는다.
 
-**Go에서는 구간이 위로 밀린다.** 디렉토리가 곧 패키지 경계라서 폴더를 만들면 import 경로와 공개 범위가 함께 바뀐다. 폴더를 만드는 비용이 다른 언어보다 크므로 더 오래 평평하게 둔다. `spf13/cobra`는 파일 34개를 폴더 없이 두고, `junegunn/fzf`의 `src/`는 파일 47개에 폴더 4개다(2026-09-02 확인).
+**Go에서는 폴더를 만들기 시작하는 파일 수가 더 크다.** 디렉토리가 곧 패키지 경계라서 폴더를 만들면 import 경로와 공개 범위가 함께 바뀐다. 폴더를 만드는 비용이 다른 언어보다 크므로 더 오래 평평하게 둔다. `spf13/cobra`는 파일 34개를 폴더 없이 두고, `junegunn/fzf`의 `src/`는 파일 47개에 폴더 4개다(2026-09-02 확인).
 
 ## 3. 파일 이름은 대상을 가리킨다
 
@@ -71,7 +71,7 @@
 
 "요즘 vertical slice가 낫다더라"로 고르지 않는다. 공유 코드의 크기를 먼저 확인한다.
 
-출처: https://milanjovanovic.tech/blog/vertical-slice-architecture, https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture
+출처: <https://milanjovanovic.tech/blog/vertical-slice-architecture>, <https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture>
 
 ## 5. 재편할 때
 
