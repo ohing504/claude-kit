@@ -64,7 +64,19 @@ FSD 튜토리얼이 적는 이유는 이렇다.
 
 **확장자가 소속을 정하지 않는다.** FSD의 `ui` 정의는 "UI components, date formatters, styles, etc."이고 포매터가 명시적으로 들어 있다. 숫자를 화면 문구로 바꾸는 `.ts` 파일을 `.tsx`가 아니라는 이유로 `model`이나 `utils`로 보내면, 문구를 고치려는 사람이 두 폴더를 다 열어야 한다. 판정 기준은 "무엇을 담았나"가 아니라 **"무엇을 고치려고 이 파일을 여나"** 이다.
 
-**shadcn을 쓰면 그 경로를 지킨다.** `components.json`의 `aliases`가 `"ui": "@/components/ui"`와 `"utils": "@/lib/utils"`를 고정하고 CLI가 그 경로에 파일을 넣는다. `common.md` 판정 6이 도구 설정을 1순위로 두는 경우다.
+**shadcn의 기본 경로는 저장소가 바꿀 수 있다.** `components.json`의 `aliases`가 배치를 정하고 CLI가 그 값대로 파일을 넣는다 — "The CLI uses these values to place generated components in the correct location and rewrite imports"이고 문서가 예로 `"ui": "@/app/ui"`를 든다(<https://ui.shadcn.com/docs/components-json>). 기본값인 `@/components/ui`와 `@/lib/utils`와 `@/hooks`를 그대로 두면 판정 2와 어긋난다. 슬라이스 구조라면 `shared` 안으로 옮긴다.
+
+```json
+"aliases": {
+  "components": "@/shared",
+  "ui": "@/shared/ui",
+  "lib": "@/shared/lib",
+  "utils": "@/shared/lib/utils",
+  "hooks": "@/shared/lib"
+}
+```
+
+바꾸는 비용은 낮다. CLI가 import를 다시 쓰므로 `shadcn add`와 덮어쓰기 업그레이드가 그대로 돈다. 기본값을 그대로 둘 이유가 있으면 저장소 문서에 적는다 — 그러면 `common.md` 판정 6의 2순위가 된다.
 
 ## 3. 배럴 파일을 쓰지 않는다
 
