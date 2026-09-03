@@ -71,7 +71,7 @@
 
 "요즘 vertical slice가 낫다더라"로 고르지 않는다. 공유 코드의 크기를 먼저 확인한다.
 
-출처: https://milanjovanovic.tech/blog/vertical-slice-architecture, https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture
+출처: <https://milanjovanovic.tech/blog/vertical-slice-architecture>, <https://antondevtips.com/blog/n-layered-vs-clean-vs-vertical-slice-architecture>
 
 ## 5. 재편할 때
 
