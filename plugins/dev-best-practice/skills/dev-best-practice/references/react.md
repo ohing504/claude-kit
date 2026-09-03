@@ -9,6 +9,7 @@
 5. 강제하는 것은 단방향 흐름 하나다
 6. Next.js와 함께 쓸 때
 7. 서버에서 실행되는 코드는 세그먼트를 따로 둔다
+8. 파일 이름은 kebab-case로 쓴다
 
 근거로 삼는 출처가 서로 충돌한다.
 
@@ -172,3 +173,30 @@ Next.js는 배치를 규정하지 않는다고 스스로 밝히고("Next.js is u
 **`actions/` 폴더를 만들지 않는다.** 판정 2대로 무엇을 위한 코드인지가 이름에 없다. Server Action이 몇 개뿐이면 `server/actions.ts` 한 파일, 늘어나면 하는 일로 이름 지은 파일로 나눈다.
 
 **Server Action은 인증을 자기 안에서 확인한다.** 화면을 거치지 않고 POST 요청으로 직접 호출된다고 Next.js가 경고한다(<https://nextjs.org/docs/app/getting-started/mutating-data>). 배치와 별개지만 `server/`에 파일을 만들 때마다 확인할 것이다.
+
+## 8. 파일 이름은 kebab-case로 쓴다
+
+컴포넌트 파일도 `stats-page.tsx`로 쓴다. export 이름은 `StatsPage`로 두어 파일 이름과 다르게 간다.
+
+이유 둘.
+
+- **대소문자를 구분하지 않는 파일시스템에서 이름만 바꾼 것이 git에 잡히지 않는다.** macOS 기본 APFS와 Windows가 그렇다. `Button.tsx`를 `button.tsx`로 바꾸면 커밋에 들어가지 않아 다른 사람이 받았을 때 import가 깨진다. 옮길 때 `git mv`를 쓴다.
+- **한 저장소에 케이스가 섞이면 파일을 찾을 때마다 어느 쪽인지 확인해야 한다.** shadcn을 쓰면 `components/ui/`가 이미 kebab이므로 나머지를 kebab으로 맞추는 것이 섞이지 않는 쪽이다.
+
+널리 쓰이는 저장소 아홉 곳의 `.tsx` 파일 이름을 세었다(2026-09-03, `git/trees` API. `node_modules`와 `dist`와 `.test.`와 `.stories.` 제외).
+
+| 저장소 | kebab | Pascal |
+|---|---|---|
+| shadcn-ui/ui | 2827 | 2 |
+| vercel/ai-chatbot | 44 | 0 |
+| bulletproof-react | 64 | 0 |
+| vercel/commerce | 19 | 0 |
+| create-t3-app | 31 | 4 |
+| TanStack/router | 1496 | 373 |
+| refinedev/refine | 715 | 351 |
+| calcom/cal.com | 104 | 697 |
+| payloadcms/payload | 40 | 491 |
+
+Pascal이 많은 둘은 2018년과 2020년에 시작한 저장소다. 최근에 시작한 넷은 Pascal이 0이다.
+
+**kebab으로 바꿀 때 이름이 겹치는지 확인한다.** `studio/ui/Sidebar.tsx`를 `sidebar.tsx`로 바꾸면 `components/ui/sidebar.tsx`와 import 문에서 구분되지 않는다. 한쪽에 슬라이스 이름을 붙인다(`studio-sidebar.tsx`) — `common.md` 판정 3이 같은 것을 정한다.
