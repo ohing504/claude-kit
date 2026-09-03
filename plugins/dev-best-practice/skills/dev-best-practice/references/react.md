@@ -8,6 +8,7 @@
 4. `features`는 두 뜻이라 먼저 정한다
 5. 강제하는 것은 단방향 흐름 하나다
 6. Next.js와 함께 쓸 때
+7. 서버에서 실행되는 코드는 세그먼트를 따로 둔다
 
 근거로 삼는 출처가 서로 충돌한다.
 
@@ -41,7 +42,7 @@ FSD 문서 자신이 레이어를 덜 쓰는 것을 허용한다 — "You don't 
 | 세그먼트 | 담는 것 |
 |---|---|
 | `ui` | UI 표시에 관한 모든 것 — 컴포넌트, 날짜 포매터, 스타일 |
-| `api` | 백엔드 상호작용 — 요청 함수, 데이터 타입, 매퍼 |
+| `api` | 백엔드 상호작용 — 프론트가 보내는 요청 함수, 데이터 타입, 매퍼. 서버가 요청을 받는 코드는 판정 7 |
 | `model` | 데이터 모델 — 스키마, 인터페이스, 스토어, 비즈니스 로직 |
 | `lib` | 그 슬라이스의 다른 모듈이 쓰는 코드 |
 | `config` | 설정 파일과 기능 플래그 |
@@ -62,7 +63,7 @@ FSD 튜토리얼이 적는 이유는 이렇다.
 
 **확장자가 소속을 정하지 않는다.** FSD의 `ui` 정의는 "UI components, date formatters, styles, etc."이고 포매터가 명시적으로 들어 있다. 숫자를 화면 문구로 바꾸는 `.ts` 파일을 `.tsx`가 아니라는 이유로 `model`이나 `utils`로 보내면, 문구를 고치려는 사람이 두 폴더를 다 열어야 한다. 판정 기준은 "무엇을 담았나"가 아니라 **"무엇을 고치려고 이 파일을 여나"** 이다.
 
-**도구가 경로를 고정하면 그 경로를 지킨다.** shadcn은 `components.json`의 `aliases`로 `"ui": "@/components/ui"`와 `"utils": "@/lib/utils"`를 고정하고 CLI가 그 경로에 파일을 넣는다. 이름 규칙보다 도구가 고정한 경로가 우선한다(`common.md` 판정 3과 같다).
+**shadcn을 쓰면 그 경로를 지킨다.** `components.json`의 `aliases`가 `"ui": "@/components/ui"`와 `"utils": "@/lib/utils"`를 고정하고 CLI가 그 경로에 파일을 넣는다. `common.md` 판정 6이 도구 설정을 1순위로 두는 경우다.
 
 ## 3. 배럴 파일을 쓰지 않는다
 
@@ -151,3 +152,23 @@ Next.js는 배치를 규정하지 않는다고 스스로 밝히고("Next.js is u
 **App Router에서 배럴을 쓰면 빌드가 깨질 수 있다.** 서버 전용 모듈이 슬라이스의 `index.ts`로 나가면, 클라이언트 컴포넌트가 그 슬라이스를 import할 때 서버 전용 부수효과가 클라이언트 모듈 그래프로 따라 들어간다. 판정 3을 지키면 이 경우가 생기지 않는다.
 
 **라우트 폴더 안에 기능을 넣을지에서 두 출처가 갈린다.** Wieruch는 기능을 `pages/projects/` 안에 넣는 것을 반대한다 — 기능 폴더 구조가 프로젝트 안에서 일관되지 않게 되고, 나중에 다른 페이지에서 재사용하려면 다시 꺼내야 한다. Next.js는 `_folder`로 colocation을 권한다. 둘 중 무엇을 따를지 저장소마다 한 번 정해 저장소 문서에 적는다.
+
+## 7. 서버에서 실행되는 코드는 세그먼트를 따로 둔다
+
+`api` 세그먼트는 프론트가 백엔드로 **보내는** 요청이다. FSD 정의가 "backend interactions: request functions, data types, mappers"이고 받는 쪽 코드는 여기 없다. FSD 자신도 Next.js 가이드에서 받는 코드에 다른 세그먼트를 준다 — Route Handler는 `api-routes`, 데이터베이스 질의는 `shared`의 `db`(<https://feature-sliced.design/docs/guides/tech/with-nextjs>).
+
+슬라이스 안에서는 `server/` 세그먼트에 모은다. FSD가 표준 세그먼트 밖의 이름을 허용한다 — "You can also create custom segments"(<https://feature-sliced.design/docs/reference/slices-segments>).
+
+| 무엇 | 어디에 두나 |
+|---|---|
+| Server Action | 슬라이스의 `server/`. 파일 맨 위에 `'use server'` |
+| Route Handler `route.ts` | `app/` 아래 라우터가 정한 경로. 본문은 슬라이스의 `server/`를 호출하는 것만 둔다 |
+| 그 밖의 프로토콜 진입점 (MCP tool 핸들러 등) | 슬라이스의 `server/` |
+
+**Server Action은 파일을 나누는 것이 프레임워크 요구다.** 클라이언트 컴포넌트에서 호출하려면 `'use server'`를 맨 위에 둔 별도 파일이어야 한다고 Next.js가 적는다(<https://nextjs.org/docs/app/api-reference/directives/use-server>). 서버 컴포넌트 안에서만 쓰는 것은 그 컴포넌트 안에 함수로 두어도 된다.
+
+**`server/`는 실행 위치가 아니라 번들 경계다.** 판정 2가 금지하는 `components/`나 `types/`와 다른 이유가 여기 있다. 이 폴더의 파일이 클라이언트 모듈 그래프로 들어가면 비밀값과 내부 로직이 브라우저로 나간다. `import 'server-only'`를 넣으면 클라이언트에서 import될 때 빌드가 실패한다(<https://nextjs.org/docs/app/getting-started/server-and-client-components>).
+
+**`actions/` 폴더를 만들지 않는다.** 판정 2대로 무엇을 위한 코드인지가 이름에 없다. Server Action이 몇 개뿐이면 `server/actions.ts` 한 파일, 늘어나면 하는 일로 이름 지은 파일로 나눈다.
+
+**Server Action은 인증을 자기 안에서 확인한다.** 화면을 거치지 않고 POST 요청으로 직접 호출된다고 Next.js가 경고한다(<https://nextjs.org/docs/app/getting-started/mutating-data>). 배치와 별개지만 `server/`에 파일을 만들 때마다 확인할 것이다.
