@@ -1,6 +1,6 @@
 {
   "name": "dev-best-practice",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "소스 트리를 어떻게 나누고 파일 이름을 어떻게 짓는지에 대한 개인 기준 — 언어와 프레임워크를 가리지 않는 배치 판정과, 그 기준으로 기존 저장소를 점검하는 절차.",
   "author": {
     "name": "ohing"
