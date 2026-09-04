@@ -75,8 +75,20 @@ httpx가 극단이다 — 파일 21개 중 15개가 `_`로 시작하고 공개�
 
 `common.md` 판정 3은 `utils.py` 같은 파일을 피하라고 한다. 실측은 그 이름이 널리 쓰인다고 나온다 — 열넷 중 열에 있고, fastapi에 4개, httpie에 4개, litestar에 8개다.
 
-**어디에 있는지가 갈린다.** `common.md`가 경고하는 것은 여러 곳이 함께 쓰는 서랍이지 패키지 하나에 붙은 지역 도우미가 아니다. 실측한 파일이 전부 지역 도우미인 것은 아니다 — `fastapi/security/utils.py`는 `fastapi/security/`만 쓰지만, `fastapi/openapi/utils.py`는 `fastapi/applications.py`가 `from fastapi.openapi.utils import get_openapi`로 부르고 `litestar/_openapi/utils.py`는 `litestar/openapi/config.py`가 부른다(2026-09-04 확인). 이름이 `utils.py`라는 것만으로는 갈리지 않으므로, 아래 규칙으로 판정한다.
+**이름과 위치로는 갈리지 않는다.** `common.md`가 경고하는 것은 여러 곳이 함께 쓰는 서랍인데, 그 서랍인지를 파일 이름으로도 부르는 곳 수로도 가릴 수 없다. fastapi와 litestar와 httpie에서 `utils` 계열 모듈을 부르는 곳을 셌다(2026-09-04).
 
+| 모듈 | 같은 패키지가 부름 | 바깥이 부름 |
+|---|---|---|
+| `httpie.utils` | 14 | 0 |
+| `litestar.utils.helpers` | 2 | 14 |
+| `fastapi.utils` | 5 | 0 |
+| `fastapi.openapi.utils` | 0 | 1 |
+| `litestar._layers.utils` | 0 | 3 |
+
+바깥에서 부르는 것도, 부르는 곳이 많은 것도 고칠 형태를 가려내지 못한다. 안에 든 함수를 열어야 갈린다.
+
+- **같은 패키지에 그 대상을 다루는 모듈이 이미 있으면 그리로 옮긴다.** `httpie/utils.py`에 `split_cookies`와 `get_expired_cookies`가 있는데 `httpie/cookies.py`가 이미 있다. `fastapi/utils.py`의 `generate_operation_id_for_path`는 openapi 도메인이고 `fastapi/openapi/`가 있다. 이것이 고칠 형태다.
+- **갈 모듈이 없는 범용 함수만 남긴다.** 자료구조와 문자열과 타입을 다루는 것들이다. `litestar/utils/helpers.py`의 `unwrap_partial`과 `get_name`이 그렇다.
+- **`<도메인>/utils.py`를 다른 패키지가 부르는 것은 고치지 않는다.** 경로가 무엇에 대한 도우미인지를 말한다 — `fastapi.openapi.utils`는 openapi 도우미라는 뜻이라 `fastapi.applications`가 불러도 서랍을 함께 쓰는 것이 아니다.
 - **한 패키지에 `utils.py`를 하나까지 둔다.** `utils.py`와 `helpers.py`와 `common.py`를 같은 폴더에 함께 두지 않는다.
-- **다른 패키지에서 import하기 시작하면 그때 나눈다.** 그 시점에 대상 이름 모듈로 옮긴다.
 - **`utils/` 폴더로 커지면 `common.md` 판정 3의 폴더 판정을 적용한다** — 안이 다시 대상별로 나뉘면 괜찮고, `utils/misc.py`처럼 다시 서랍을 만들면 고친다. scrapy에 `scrapy/utils/misc.py`가 그 형태로 있다.

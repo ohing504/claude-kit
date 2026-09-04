@@ -30,6 +30,17 @@ b/b.go               import "m/a/internal/secret"   use of internal package not 
 - 루트 `internal/`이 있어도 크기는 크게 다르다. prometheus의 루트 `internal/`은 `//go:build tools`가 붙은 `internal/tools/tools.go` 하나뿐이라 공개 범위를 나눈 사례로 세지 않는다.
 - **`internal/` 바로 아래 폴더 이름은 도메인 명사로 쓴다.** 아홉 저장소의 `internal/` 직속 폴더 98개 중 층위 이름(`utils`, `handlers`, `service`, `model`, `types`)은 하나뿐이었다(minio의 `handlers`).
 
+**감출 것을 쓰는 곳들의 가장 얕은 공통 부모 아래에 둔다.** 위 컴파일러 규칙에서 `internal/`을 어느 깊이에 두는지가 곧 경계의 넓이다 — 루트에 두면 저장소 전체가 import할 수 있어 가장 느슨하다. 한 서브트리만 쓰는 것은 그 서브트리 아래에 둔다.
+
+| 배치 | 저장소 |
+|---|---|
+| 루트만 | cli/cli, prometheus, syncthing, minio, k6 |
+| 루트와 중첩을 함께 | hugo(중첩 5), caddy(1), traefik(1), ollama(2) |
+| 중첩만 | rclone(3), gitea(5) |
+| 없음 | fzf, cobra, bubbletea |
+
+`internal/`을 두는 열하나 중 여섯이 중첩 배치를 쓴다(2026-09-04, 생성 경로 제외). gitea는 같은 서브트리 안에서 깊이를 나눈다 — `modules/indexer/internal`은 `modules/indexer/` 아래 전부가 쓰고, `modules/indexer/code/internal`은 `code/`만 쓴다.
+
 **라이브러리를 배포하면 공개 범위가 곧 API다.** 밖에서 쓸 것만 위에 두고 나머지를 `internal/`로 내린다. `internal/`이 하나도 없는 셋 중 cobra와 bubbletea는 파일이 루트에 평평해 나눌 것이 없는 경우다(→ 4).
 
 ## 2. `pkg/`를 만들지 않는다
