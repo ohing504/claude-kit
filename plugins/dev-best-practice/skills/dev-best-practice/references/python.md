@@ -6,7 +6,7 @@
 2. 밖에 내지 않을 것은 밑줄 접두로 표시한다
 3. 패키지 루트 `__init__.py`만 공개 API로 쓴다
 4. 파일 이름은 snake_case로 쓴다
-5. `utils.py`는 패키지마다 하나까지 둔다
+5. `utils.py`는 안에 든 함수를 보고 판정한다
 
 판정의 근거는 실제로 운영되는 저장소를 센 결과다. 2026-09-04에 GitHub `git/trees` API로 아래 열넷의 파일 경로를 받아 세었다(`tests`, `docs`, `examples`, `benchmarks`, `scripts` 경로 제외).
 
@@ -71,7 +71,7 @@ httpx가 극단이다 — 파일 21개 중 15개가 `_`로 시작하고 공개�
 
 파일 이름이 곧 import 경로이므로 `common.md` 판정 3이 그대로 걸린다 — 이름은 다루는 대상을 가리킨다.
 
-## 5. `utils.py`는 패키지마다 하나까지 둔다
+## 5. `utils.py`는 안에 든 함수를 보고 판정한다
 
 `common.md` 판정 3은 `utils.py` 같은 파일을 피하라고 한다. 실측은 그 이름이 널리 쓰인다고 나온다 — 열넷 중 열에 있고, fastapi에 4개, httpie에 4개, litestar에 8개다.
 
