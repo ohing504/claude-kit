@@ -38,14 +38,14 @@
 
 ## 3. 파일 이름은 대상을 가리킨다
 
-동작이 아니라 **다루는 것**의 이름을 쓴다. `sessions.py`, `downloads.py`, `element.py`, `packages.py`.
+동작이 아니라 **다루는 것**의 이름을 쓴다 — httpie의 `sessions.py`와 `downloads.py`, bs4의 `element.py`, poetry의 `packages.py`.
 
 **이 판정은 피할 이름을 정한다. 무엇을 쓸지는 `naming.md`가 정한다** — 대상과 역할을 붙이는 순서, 단수와 복수, 접두를 붙이는 시점, 약어 판정이 거기 있다.
 
 | 피할 이름 | 왜 | 고침 |
 |---|---|---|
 | 여러 곳이 함께 쓰는 `utils.py`, `helpers.go`, `common.ts` **파일** | 무엇이든 들어가서 결국 아무도 읽지 않는다 | 그 대상을 다루는 모듈이 이미 있으면 그리로 옮기고, 없으면 대상별 파일로 나눈다 |
-| `manager`, `handler`, `service` | 무엇을 관리하는지가 이름에 없다 | `sessions`, `downloads` |
+| `manager`, `handler`, `service` | 무엇을 관리하는지가 이름에 없다 | `session`, `download` |
 | 읽기 모듈의 `article` | 대상 이름이지만 그 모듈이 무엇을 하는지 안 보인다 | 산출물 이름으로 — `post` |
 | 같은 이름이 두 경로에(`model.py`와 `x/model.py`) | import 문에서 어느 쪽인지 구분되지 않는다 | 한쪽을 산출물 이름으로 — `result.py` |
 

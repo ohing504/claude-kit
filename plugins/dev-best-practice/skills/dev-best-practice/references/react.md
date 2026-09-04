@@ -27,7 +27,7 @@ src/
   lib/                 여러 기능이 함께 쓰는 코드
   hooks/               여러 기능이 함께 쓰는 훅
   features/
-    accounts/
+    account/
       components/      이 기능의 화면
       lib/             이 기능의 로직
       hooks/
