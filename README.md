@@ -34,7 +34,7 @@ claude plugin install claude-kit@claude-kit
 
 | 스킬 | 하는 일 |
 |---|---|
-| **ai-doc-improver** | AI가 읽는 문서(CLAUDE.md·SKILL.md 등)를 토큰 밀도·가독성으로 다이어트 |
+| **ai-doc-improver** | AI가 읽는 문서(CLAUDE.md, SKILL.md 등)를 토큰 밀도, instruction 준수율, 서술 정확도로 점검해 정리 |
 | **prompt-forge** | 대충 던진 요청을 인터뷰로 파고들어 의도 명세(intent spec)로 — 문구가 아니라 의도를 벼린다 · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/prompt-forge/prompt-forge-guide.html) |
 | **memory-manager** | `~/.claude` 파일 메모리의 중복·오배치·인덱스 bloat 정리 |
 
