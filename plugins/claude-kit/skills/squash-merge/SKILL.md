@@ -118,7 +118,7 @@ git push origin --delete "<PR headRefName>" \
 git fetch -p
 HEAD_BRANCH=<PR headRefName>   # Step 1에서 받은 값
 BASE=<PR baseRefName>          # Step 1에서 받은 값
-MAIN_WT=$(git worktree list | head -1 | awk '{print $1}')
+MAIN_WT=$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2-)
 CURRENT_WT=$(git rev-parse --show-toplevel)
 
 # 이 브랜치가 실제로 [gone] 상태인지 확인 (원격 삭제 반영됐는지)
@@ -126,7 +126,8 @@ track=$(git for-each-ref --format '%(upstream:track)' "refs/heads/$HEAD_BRANCH")
 if [ "$track" != "[gone]" ]; then
   echo "브랜치 '$HEAD_BRANCH' 미존재 또는 [gone] 아님 — 로컬 정리 skip"
 else
-  worktree=$(git worktree list | grep "\\[$HEAD_BRANCH\\]" | awk '{print $1}')
+  worktree=$(git worktree list --porcelain \
+    | awk -v b="refs/heads/$HEAD_BRANCH" '/^worktree /{w=substr($0,10)} $0=="branch "b{print w; exit}')
   if [ "$worktree" = "$CURRENT_WT" ] && [ "$CURRENT_WT" != "$MAIN_WT" ]; then
     echo "⏭  현재 작업 중인 linked worktree — 정리는 세션 종료 시 keep/remove 프롬프트에서. remove를 고르면 워크트리와 브랜치 '$HEAD_BRANCH'가 함께 삭제되고, keep이면 둘 다 남는다."
   elif [ "$worktree" = "$CURRENT_WT" ]; then
@@ -145,13 +146,14 @@ fi
 
 - **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X).
 - **메인 워크트리는 다르다.** 거기서 PR 브랜치를 체크아웃한 채 머지하면 `git worktree list`가 메인 워크트리를 그 브랜치 소유로 보여주지만, 이건 정리를 건너뛸 이유가 아니다 — base로 checkout하면 브랜치를 지울 수 있다. 워크트리 자체는 그대로 둔다.
+- **경로에 공백이 있어도 잘리지 않게 `--porcelain`으로 읽는다.** 사람이 읽는 `git worktree list` 출력은 경로와 커밋과 브랜치를 공백으로 잇기 때문에 `awk '{print $1}'`이 `/Users/me/My Documents/repo`를 `/Users/me/My`에서 자른다. 그러면 메인 워크트리인데도 linked worktree로 오판해 로컬 정리를 통째로 건너뛴다.
 - **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단·별도 도구 몫.
 
 ### Step 6. base 브랜치 로컬 동기화
 
 ```bash
 BASE=<PR baseRefName>   # Step 1에서 받은 값 (보통 main, develop 등일 수 있음)
-MAIN_WT=$(git worktree list | head -1 | awk '{print $1}')
+MAIN_WT=$(git worktree list --porcelain | grep -m1 '^worktree ' | cut -d' ' -f2-)
 CURRENT_WT=$(git rev-parse --show-toplevel)
 if [ "$CURRENT_WT" = "$MAIN_WT" ]; then
   if [ -n "$(git status --porcelain)" ]; then
