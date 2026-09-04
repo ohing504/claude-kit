@@ -25,10 +25,12 @@ b/b.go               import "m/a/internal/secret"   use of internal package not 
 
 재현해 확인했다(go1.27.0, 2026-09-04). 다른 언어에서 밑줄 접두나 린트로 표현하던 "밖에서 쓰지 마라"를 Go는 빌드 실패로 만든다.
 
-- 열넷 중 아홉이 쓴다. 안 쓰는 다섯은 fzf, cobra, bubbletea, rclone, gitea다.
+- 저장소 루트의 `internal/`을 두는 곳이 열넷 중 아홉이다. 안 두는 다섯은 fzf, cobra, bubbletea, rclone, gitea다.
+- **루트에 없다고 안 쓰는 것이 아니다.** `internal/`은 어느 깊이에 두어도 같게 동작하므로 패키지 안쪽에 두는 곳이 있다. rclone은 `lib/encoder/internal/`과 `backend/hidrive/hidrivehash/internal/`에, gitea는 `modules/git/internal/`과 `modules/indexer/internal/`을 포함한 다섯 자리에 둔다. 열넷 중 `internal/`이 하나도 없는 곳은 fzf, cobra, bubbletea 셋뿐이다.
+- 루트 `internal/`이 있어도 크기는 크게 다르다. prometheus의 루트 `internal/`은 `//go:build tools`가 붙은 `internal/tools/tools.go` 하나뿐이라 공개 범위를 나눈 사례로 세지 않는다.
 - **`internal/` 바로 아래 폴더 이름은 도메인 명사로 쓴다.** 아홉 저장소의 `internal/` 직속 폴더 98개 중 층위 이름(`utils`, `handlers`, `service`, `model`, `types`)은 하나뿐이었다(minio의 `handlers`).
 
-**라이브러리를 배포하면 공개 범위가 곧 API다.** 밖에서 쓸 것만 위에 두고 나머지를 `internal/`로 내린다. 안 쓰는 다섯 중 cobra와 bubbletea는 파일이 루트에 평평해 나눌 것이 없는 경우다(→ 4).
+**라이브러리를 배포하면 공개 범위가 곧 API다.** 밖에서 쓸 것만 위에 두고 나머지를 `internal/`로 내린다. `internal/`이 하나도 없는 셋 중 cobra와 bubbletea는 파일이 루트에 평평해 나눌 것이 없는 경우다(→ 4).
 
 ## 2. `pkg/`를 만들지 않는다
 

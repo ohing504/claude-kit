@@ -32,13 +32,15 @@ Go의 `internal/`에 해당하는 자리다. 강제되지 않고 관례이지만
 
 | 저장소 | 밑줄 접두 파일 / 전체 | 밑줄 접두 폴더 |
 |---|---|---|
-| textual | 118 / 240 | - |
-| pip | 54 / 360 | `_internal`, `_vendor` |
+| textual | 119 / 240 | - |
+| pip | 59 / 360 | `_internal`, `_vendor` |
 | pydantic | 32 / 99 | `_internal` |
 | httpx | 15 / 21 | `_transports` |
-| litestar | 15 / 254 | `_asgi`, `_kwargs`, `_layers`, `_openapi`, `_signature` |
+| litestar | 20 / 254 | `_asgi`, `_kwargs`, `_layers`, `_openapi`, `_signature` |
 | typer | 8 / 30 | `_click` |
 | scrapy | 8 / 156 | - |
+
+세는 규칙은 이렇다 — 전체는 패키지 아래 `.py` 중 `__init__.py`를 뺀 수이고, 밑줄 접두 파일은 그중 이름이 밑줄 하나로 시작하는 것이다(`__`로 시작하는 것은 빼고, `tests`, `docs`, `examples`, `benchmarks`, `scripts` 경로도 뺐다).
 
 httpx가 극단이다 — 파일 21개 중 15개가 `_`로 시작하고 공개하는 이름은 전부 `__init__.py`가 낸다. 안을 어떻게 바꾸든 쓰는 쪽이 안 깨진다.
 
@@ -46,7 +48,7 @@ httpx가 극단이다 — 파일 21개 중 15개가 `_`로 시작하고 공개�
 
 ## 3. 패키지 루트 `__init__.py`만 공개 API로 쓴다
 
-`react.md` 판정 4는 배럴 파일을 쓰지 않는다고 정한다. **Python의 패키지 루트 `__init__.py`는 예외다** — 배포 경계라 밖에서 부르는 이름을 여기서 정해야 한다. `react.md`가 배럴을 라이브러리 진입점에만 허용하는 것과 같은 선이다.
+`react.md` 판정 4는 배럴 파일을 앱 코드에 두지 않는다고 정한다. **Python의 패키지 루트 `__init__.py`는 예외다** — 배포 경계라 밖에서 부르는 이름을 여기서 정해야 한다. `react.md`가 판정 대상을 앱 코드로 한정한 것과 같은 선이고, 하위 폴더의 `__init__.py`에는 그 판정이 그대로 걸린다.
 
 | 저장소 | 루트 `__init__.py` 줄 | `from .` 줄 | `__all__` 원소 | 지연 import |
 |---|---|---|---|---|
@@ -73,7 +75,7 @@ httpx가 극단이다 — 파일 21개 중 15개가 `_`로 시작하고 공개�
 
 `common.md` 판정 3은 `utils.py` 같은 파일을 피하라고 한다. 실측은 그 이름이 널리 쓰인다고 나온다 — 열넷 중 열에 있고, fastapi에 4개, httpie에 4개, litestar에 8개다.
 
-**어디에 있는지가 갈린다.** 이 파일들은 전부 자기 패키지 안에서만 쓰인다 — `fastapi/security/utils.py`는 `fastapi/security/`가 쓰고, `litestar/_openapi/utils.py`는 `litestar/_openapi/`가 쓴다. `common.md`가 경고하는 것은 여러 곳이 함께 쓰는 서랍이지 패키지 하나에 붙은 지역 도우미가 아니다.
+**어디에 있는지가 갈린다.** `common.md`가 경고하는 것은 여러 곳이 함께 쓰는 서랍이지 패키지 하나에 붙은 지역 도우미가 아니다. 실측한 파일이 전부 지역 도우미인 것은 아니다 — `fastapi/security/utils.py`는 `fastapi/security/`만 쓰지만, `fastapi/openapi/utils.py`는 `fastapi/applications.py`가 `from fastapi.openapi.utils import get_openapi`로 부르고 `litestar/_openapi/utils.py`는 `litestar/openapi/config.py`가 부른다(2026-09-04 확인). 이름이 `utils.py`라는 것만으로는 갈리지 않으므로, 아래 규칙으로 판정한다.
 
 - **한 패키지에 `utils.py`를 하나까지 둔다.** `utils.py`와 `helpers.py`와 `common.py`를 같은 폴더에 함께 두지 않는다.
 - **다른 패키지에서 import하기 시작하면 그때 나눈다.** 그 시점에 대상 이름 모듈로 옮긴다.
