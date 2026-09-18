@@ -13,6 +13,7 @@ usage index --db <경로> --root <폴더>
 
 usage quota --collect -- <원래 커맨드>   # statusLine을 tee해 구독 한도 표본을 뜬다
 usage quota --session <세션 ID> --from 15 --until 21   # 그 구간의 한도 소진량
+usage quota --window seven_day --table   # 지금 열린 주간 창이 쓴 토큰
 ```
 
 이 도구를 부르는 쪽은 대부분 스킬을 쓰는 에이전트다. 그래서 `session`의 기본 출력은 JSON이고,
@@ -186,6 +187,8 @@ usage quota --collect -- <원래 커맨드>            # tee — statusLine에 �
 usage quota --collect                             # tee 없이 표본만 남긴다
 usage quota --session <세션 ID> --from 15 --until 21   # 그 구간의 소진량
 usage quota --session <세션 ID> --table           # 사람이 읽을 표로
+usage quota --window seven_day --table            # 주간 창이 열린 뒤 쓴 토큰
+usage quota --window seven_day --plan-monthly 200 # 한도를 다 쓸 때의 1M 토큰당 구독료
 ```
 
 표본은 코퍼스 인덱스와 별도로 `~/.claude/usage-quota.db`에 쌓인다(`--db`로 바꾼다) —
@@ -202,13 +205,33 @@ usage quota --session <세션 ID> --table           # 사람이 읽을 표로
 같은 구간에 다른 세션이 함께 돈 것은 버리지 않고 `parallel_sessions`로 낸다 — 그 소진이 섞여
 있을 수 있다는 뜻이고, 리포트를 읽는 쪽이 이 값을 상한으로 쓸 수 있다.
 
+### `--window`
+
+`--session`이 세션 하나의 구간을 재는 반면 `--window`는 창 하나 전체를 잰다. 가장 최근 표본의
+`resets_at`에서 창 길이(주간 7일, 5시간 창 5시간)를 빼 창이 열린 시각을 구하고, 그 경계로 코퍼스
+인덱스(`--index-db`, 기본 `~/.claude/usage-index.db`)를 잘라 모델별 토큰을 센다. 창 시작은
+포함하고 초기화 시각은 다음 창 몫이라 뺀다.
+
+그 창의 표본이 한 번도 없으면 아무것도 내지 않는다 — 창 경계를 모르므로 추측하지 않는다.
+마지막 표본이 낡아 창이 이미 초기화됐으면 `already_reset`으로 표시한다. 그 수치는 지난 창의
+것이지 지금 창의 것이 아니다.
+
+`projected_full`은 지금까지 쓴 토큰을 소진율로 나눈 값 — 한도를 100% 쓸 때의 토큰 수다.
+소진율이 0이면 내지 않는다.
+
+`--plan-monthly`로 월 구독료를 주면 주 요금(월 요금 ÷ 52/12)을 `projected_full`로 나눠 1M
+토큰당 단가를 낸다. 주간 창에만 쓴다 — 5시간 창은 하루에 여러 번 열려 월 요금을 배분할 근거가
+없다. 이 단가는 API 정가가 아니라 실제로 낸 구독료를 쓴 토큰으로 나눈 값이다.
+
 **statusLine이 다시 그려질 때 남은 표본만 잰다.** `-p` 모드와 백그라운드 세션에는 애초에
 표본이 없다. 같은 시각에 다른 세션, 다른 기기, 웹 Claude를 함께 썼다면 그 소진도 섞여 있을
 수 있다.
 
 ## 내지 않는 것
 
-- **금액** — 구독 크레딧으로 실행되므로 API 정가를 곱한 값이 실제 청구와 자릿수가 맞지 않는다
+- **API 정가 환산 금액** — 구독 크레딧으로 실행되므로 정가를 곱한 값이 실제 청구와 자릿수가
+  맞지 않는다. `usage quota --window --plan-monthly`가 내는 것은 반대 방향이다 — 실제로 낸
+  구독료를 쓴 토큰으로 나눈다
 - **작업 하나당 값** — 한 세션에 여러 작업이 섞인다. 작업 하나의 값을 재려면 그 작업만 도는 세션을
   따로 돌리거나 `--from`과 `--until`로 구간을 자른다
 - **teammate의 대기 시간** — teammate 세션 행에 `origin`이 없어 대기를 가를 근거가 없다. 0으로 나온다

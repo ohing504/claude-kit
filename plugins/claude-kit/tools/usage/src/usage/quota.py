@@ -12,10 +12,14 @@ import sys
 from collections.abc import Sequence
 from contextlib import closing
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 _WINDOW_KINDS = ("five_hour", "seven_day", "spend_limit")
+# 창이 얼마나 긴지는 페이로드에 없다 — `resets_at`에서 이만큼을 빼야 창이 열린 시각이 된다.
+_WINDOW_SPANS = {"five_hour": timedelta(hours=5), "seven_day": timedelta(days=7)}
+# 월 요금을 주 요금으로 바꾼다. 달마다 주 수가 달라 12개월을 52주로 나눈 값을 쓴다.
+_WEEKS_PER_MONTH = 52 / 12
 
 
 @dataclass(frozen=True)
@@ -291,3 +295,111 @@ def run_collect(db_path: Path, child_cmd: Sequence[str] | None) -> int:
     sys.stderr.buffer.write(proc.stderr)
     sys.stderr.buffer.flush()
     return int(proc.returncode)
+
+
+@dataclass(frozen=True)
+class ModelTokens:
+    model: str
+    total_tokens: int
+    output_tokens: int
+    requests: int
+
+
+@dataclass(frozen=True)
+class WindowUsage:
+    """창 하나가 열린 뒤 지금까지 쓴 양. `unmeasurable`이 비어 있지 않으면 그만큼 값을 못 낸 것이다."""
+
+    window_kind: str
+    starts_at: str
+    resets_at: str
+    used_percentage: float
+    observed_at: str
+    total_tokens: int
+    output_tokens: int
+    requests: int
+    by_model: list[ModelTokens]
+    projected_full: int | None
+    plan_monthly_usd: float | None
+    effective_usd_per_mtok: float | None
+    already_reset: bool
+    unmeasurable: list[str]
+
+
+def window_span(resets_at: int, kind: str) -> tuple[datetime, datetime]:
+    """창이 열린 시각과 초기화되는 시각. 창 길이는 페이로드에 없어 종류마다 상수로 안다."""
+    end = datetime.fromtimestamp(resets_at, UTC)
+    return end - _WINDOW_SPANS[kind], end
+
+
+def _latest_window(conn: sqlite3.Connection, kind: str) -> tuple[str, Window] | None:
+    row = conn.execute(
+        "SELECT observed_at, used_percentage, resets_at FROM quota_windows"
+        " WHERE window_kind = ? ORDER BY observed_at DESC LIMIT 1",
+        (kind,),
+    ).fetchone()
+    if row is None:
+        return None
+    return str(row[0]), Window(used_percentage=float(row[1]), resets_at=int(row[2]))
+
+
+def window_usage(
+    quota_conn: sqlite3.Connection,
+    index_conn: sqlite3.Connection,
+    kind: str,
+    plan_monthly: float | None = None,
+    now: datetime | None = None,
+) -> WindowUsage | None:
+    """가장 최근 표본이 가리키는 창의 경계로 인덱스를 잘라, 그 창이 쓴 토큰을 낸다.
+
+    그 창의 표본이 한 번도 없으면 `None` — 창 경계를 모르므로 추측해서 내지 않는다.
+    """
+    latest = _latest_window(quota_conn, kind)
+    if latest is None:
+        return None
+    observed_at, window = latest
+    start, end = window_span(window.resets_at, kind)
+    # `requests.timestamp`는 'Z' 접미의 ISO8601이라, 초까지 자른 경계 문자열과의 사전순 비교가
+    # 시각 비교와 같다. 창이 열린 시각은 포함하고 초기화되는 시각은 다음 창 몫이라 뺀다.
+    rows = index_conn.execute(
+        "SELECT model, SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens),"
+        " SUM(output_tokens), COUNT(*) FROM requests WHERE timestamp >= ? AND timestamp < ?"
+        " GROUP BY model ORDER BY 2 DESC",
+        (start.strftime("%Y-%m-%dT%H:%M:%S"), end.strftime("%Y-%m-%dT%H:%M:%S")),
+    ).fetchall()
+    by_model = [ModelTokens(r[0], int(r[1]), int(r[2]), int(r[3])) for r in rows]
+    total = sum(m.total_tokens for m in by_model)
+
+    unmeasurable: list[str] = []
+    projected: int | None = None
+    if window.used_percentage <= 0:
+        unmeasurable.append("소진율이 0이라 한도 전체를 환산할 수 없다")
+    else:
+        projected = round(total / (window.used_percentage / 100))
+
+    effective: float | None = None
+    if plan_monthly is not None:
+        if kind != "seven_day":
+            # 5시간 창은 하루에 여러 번 열리고 그 전부를 쓰지도 않아, 월 요금을 창 하나에
+            # 배분할 근거가 없다. 주간 창만 구독 주기와 1:1로 맞는다.
+            unmeasurable.append("월 요금은 주간 창에만 배분할 수 있다")
+        elif projected:
+            effective = (plan_monthly / _WEEKS_PER_MONTH) / (projected / 1e6)
+        else:
+            unmeasurable.append("한도 전체를 환산하지 못해 단가를 낼 수 없다")
+
+    return WindowUsage(
+        window_kind=kind,
+        starts_at=start.isoformat(),
+        resets_at=end.isoformat(),
+        used_percentage=window.used_percentage,
+        observed_at=observed_at,
+        total_tokens=total,
+        output_tokens=sum(m.output_tokens for m in by_model),
+        requests=sum(m.requests for m in by_model),
+        by_model=by_model,
+        projected_full=projected,
+        plan_monthly_usd=plan_monthly,
+        effective_usd_per_mtok=effective,
+        already_reset=(now or datetime.now(UTC)) >= end,
+        unmeasurable=unmeasurable,
+    )

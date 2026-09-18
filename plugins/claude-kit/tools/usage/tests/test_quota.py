@@ -2,10 +2,12 @@
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
-from usage.cli import main
+from usage.cli import _QUOTA_MEASURED, main
+from usage.index import _connect as index_connect
 from usage.quota import (
     Observation,
     Window,
@@ -13,6 +15,8 @@ from usage.quota import (
     is_same_windows,
     parse_payload,
     record,
+    window_span,
+    window_usage,
 )
 
 
@@ -461,3 +465,217 @@ def test_session_range_is_validated_the_same_way_as_the_session_command(tmp_path
         ["quota", "--db", str(db), "--session", "deadbeef-0001", "--from", "50", "--until", "5"]
     )
     assert code == 1
+
+
+# --- 창 하나가 쓴 양 ---------------------------------------------------------
+
+
+def _resets_at() -> int:
+    """2026-09-19 01:00 KST — 주간 창은 토요일 01:00 KST에 초기화된다."""
+    return int(datetime(2026, 9, 18, 16, 0, tzinfo=UTC).timestamp())
+
+
+def _sample(db: Path, pct: float, kind: str = "seven_day", resets: int | None = None) -> None:
+    record(
+        Observation(
+            session_id="s1",
+            windows={kind: Window(used_percentage=pct, resets_at=resets or _resets_at())},
+            observed_at=datetime(2026, 9, 18, 15, 58, tzinfo=UTC).isoformat(),
+        ),
+        db,
+    )
+
+
+def _request(
+    conn: sqlite3.Connection,
+    timestamp: str,
+    *,
+    model: str = "claude-opus-5",
+    read: int = 900,
+    output: int = 100,
+) -> None:
+    conn.execute(
+        "INSERT INTO requests (session_id, agent_id, order_in_scope, timestamp, model,"
+        " input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, thinking_tokens,"
+        " produced_chars, context_tokens, is_compaction_boundary)"
+        " VALUES ('s1', NULL, 1, ?, ?, 0, ?, 0, ?, 0, 0, 0, 0)",
+        (timestamp, model, read, output),
+    )
+    conn.commit()
+
+
+def test_a_seven_day_window_starts_seven_days_before_it_resets() -> None:
+    start, end = window_span(_resets_at(), "seven_day")
+    assert start == datetime(2026, 9, 11, 16, 0, tzinfo=UTC)
+    assert end == datetime(2026, 9, 18, 16, 0, tzinfo=UTC)
+
+
+def test_a_five_hour_window_starts_five_hours_before_it_resets() -> None:
+    start, _end = window_span(_resets_at(), "five_hour")
+    assert start == datetime(2026, 9, 18, 11, 0, tzinfo=UTC)
+
+
+def test_only_requests_inside_the_window_are_counted(tmp_path: Path) -> None:
+    """창 시작은 포함하고 초기화 시각은 제외한다 — 초기화 시각의 요청은 다음 창 몫이다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-11T15:59:59.999Z")  # 창 시작 직전
+        _request(idx, "2026-09-11T16:00:00.000Z")  # 창 시작 — 포함
+        _request(idx, "2026-09-15T00:00:00.000Z")  # 창 안 — 포함
+        _request(idx, "2026-09-18T16:00:00.000Z")  # 초기화 시각 — 제외
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert usage.requests == 2
+    assert usage.total_tokens == 2000
+
+
+def test_tokens_are_broken_down_by_model(tmp_path: Path) -> None:
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z", model="claude-opus-5")
+        _request(idx, "2026-09-15T00:00:01.000Z", model="claude-sonnet-5")
+        _request(idx, "2026-09-15T00:00:02.000Z", model="claude-sonnet-5")
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert [(m.model, m.requests) for m in usage.by_model] == [
+        ("claude-sonnet-5", 2),
+        ("claude-opus-5", 1),
+    ]
+
+
+def test_the_full_window_projection_divides_by_the_observed_percentage(tmp_path: Path) -> None:
+    """한도의 절반을 쓴 시점에 20억 토큰이면 한도 전체는 40억 토큰어치다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z", read=1_999_999_000, output=1000)
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert usage.projected_full == 4_000_000_000
+
+
+def test_a_zero_percentage_yields_no_projection(tmp_path: Path) -> None:
+    """창이 막 열려 0%면 나눌 수 없다 — 0 대신 값을 내지 않는다."""
+    _sample(tmp_path / "q.db", 0.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z")
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert usage.projected_full is None
+    assert usage.unmeasurable == ["소진율이 0이라 한도 전체를 환산할 수 없다"]
+
+
+def test_a_monthly_plan_price_yields_an_effective_unit_price(tmp_path: Path) -> None:
+    """월 $200은 주 $46.15다(12개월 / 52주). 한도를 다 쓴 시점에 100M 토큰이면 1M당 $0.4615다."""
+    _sample(tmp_path / "q.db", 100.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z", read=99_900_000, output=100_000)
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "seven_day", plan_monthly=200.0)
+    assert usage is not None
+    assert usage.effective_usd_per_mtok is not None
+    assert round(usage.effective_usd_per_mtok, 4) == 0.4615
+
+
+def test_a_window_with_no_sample_yields_nothing(tmp_path: Path) -> None:
+    """그 창의 표본이 한 번도 안 왔으면 창 경계를 모른다 — 추측해서 내지 않는다."""
+    _sample(tmp_path / "q.db", 50.0, kind="five_hour")
+    with (
+        closing(index_connect(tmp_path / "i.db")) as idx,
+        closing(sqlite3.connect(tmp_path / "q.db")) as q,
+    ):
+        assert window_usage(q, idx, "seven_day") is None
+
+
+def test_a_monthly_plan_price_is_not_applied_to_the_five_hour_window(tmp_path: Path) -> None:
+    """5시간 창은 하루에 여러 번 열려 월 요금을 배분할 근거가 없다."""
+    _sample(tmp_path / "q.db", 50.0, kind="five_hour")
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-18T12:00:00.000Z")
+        with closing(sqlite3.connect(tmp_path / "q.db")) as q:
+            usage = window_usage(q, idx, "five_hour", plan_monthly=200.0)
+    assert usage is not None
+    assert usage.effective_usd_per_mtok is None
+    assert usage.unmeasurable == ["월 요금은 주간 창에만 배분할 수 있다"]
+
+
+# --- 창 집계를 CLI로 부르기 ---------------------------------------------------
+
+
+def _window_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "quota",
+        "--window",
+        "seven_day",
+        "--db",
+        str(tmp_path / "q.db"),
+        "--index-db",
+        str(tmp_path / "i.db"),
+        *extra,
+    ]
+
+
+def test_cli_window_reports_the_totals_with_the_measurement_boundary(
+    tmp_path: Path, capsys
+) -> None:
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z")
+    assert main(_window_argv(tmp_path)) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["measured"] == _QUOTA_MEASURED
+    assert got["window_kind"] == "seven_day"
+    assert got["total_tokens"] == 1000
+    assert got["projected_full"] == 2000
+
+
+def test_cli_window_table_lists_each_model(tmp_path: Path, capsys) -> None:
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z", model="claude-opus-5")
+        _request(idx, "2026-09-15T01:00:00.000Z", model="claude-sonnet-5")
+    assert main(_window_argv(tmp_path, "--table")) == 0
+    out = capsys.readouterr().out
+    assert "claude-opus-5" in out
+    assert "claude-sonnet-5" in out
+
+
+def test_cli_window_with_a_plan_price_prints_the_unit_price(tmp_path: Path, capsys) -> None:
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z")
+    assert main(_window_argv(tmp_path, "--plan-monthly", "200")) == 0
+    got = json.loads(capsys.readouterr().out)
+    assert got["plan_monthly_usd"] == 200.0
+    assert got["effective_usd_per_mtok"] is not None
+
+
+def test_cli_window_without_a_sample_fails_instead_of_guessing(tmp_path: Path, capsys) -> None:
+    (tmp_path / "q.db").touch()
+    _sample(tmp_path / "q.db", 50.0, kind="five_hour")
+    with closing(index_connect(tmp_path / "i.db")):
+        pass
+    assert main(_window_argv(tmp_path)) == 1
+    assert "표본이 없다" in capsys.readouterr().err
+
+
+def test_cli_window_and_session_cannot_be_asked_for_together(tmp_path: Path, capsys) -> None:
+    assert main(_window_argv(tmp_path, "--session", "s1")) == 1
+    assert "같이 쓸 수 없다" in capsys.readouterr().err
+
+
+def test_a_window_that_already_reset_is_marked_stale(tmp_path: Path) -> None:
+    """마지막 표본이 낡아 창이 이미 초기화됐으면, 그 수치를 현재 창으로 읽으면 안 된다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with (
+        closing(index_connect(tmp_path / "i.db")) as idx,
+        closing(sqlite3.connect(tmp_path / "q.db")) as q,
+    ):
+        _request(idx, "2026-09-15T00:00:00.000Z")
+        after = window_usage(q, idx, "seven_day", now=datetime(2026, 9, 19, 1, 0, tzinfo=UTC))
+        during = window_usage(q, idx, "seven_day", now=datetime(2026, 9, 18, 15, 0, tzinfo=UTC))
+    assert after is not None and after.already_reset
+    assert during is not None and not during.already_reset

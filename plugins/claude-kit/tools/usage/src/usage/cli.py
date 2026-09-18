@@ -13,7 +13,7 @@ from typing import Any
 
 from usage.corpus import BY_CHOICES, CheckResult, check, report
 from usage.index import index_corpus
-from usage.quota import Attribution, attribute_interval, run_collect
+from usage.quota import Attribution, WindowUsage, attribute_interval, run_collect, window_usage
 from usage.session import Session, Totals, find_transcript, read_session
 
 
@@ -394,6 +394,36 @@ def _quota_table(attr: Attribution) -> str:
     return "\n".join(lines)
 
 
+def _window_dict(u: WindowUsage) -> dict[str, object]:
+    return {
+        "measured": _QUOTA_MEASURED,
+        **{k: v for k, v in asdict(u).items()},
+    }
+
+
+def _window_table(u: WindowUsage) -> str:
+    lines = [
+        _QUOTA_MEASURED,
+        f"창 {u.window_kind}  {u.starts_at} ~ {u.resets_at}",
+        f"소진 {u.used_percentage:.0f}%  (관측 {u.observed_at})",
+        *(["이 창은 이미 초기화됐다 — 표본이 새로 와야 현재 창을 낸다"] if u.already_reset else []),
+        f"쓴 양 {u.total_tokens:,} 토큰 / 출력 {u.output_tokens:,} / 요청 {u.requests:,}개",
+    ]
+    for m in u.by_model:
+        lines.append(f"  {m.model:<20}{m.total_tokens:>16,}  출력 {m.output_tokens:>12,}")
+    if u.projected_full is not None:
+        lines.append(f"한도 100% 환산  {u.projected_full:,} 토큰")
+    if u.effective_usd_per_mtok is not None:
+        weekly = (u.plan_monthly_usd or 0) * 12 / 52
+        lines.append(
+            f"월 ${u.plan_monthly_usd:,.0f} (주 ${weekly:,.2f})"
+            f"  →  ${u.effective_usd_per_mtok:.4f} / 1M 토큰"
+        )
+    for reason in u.unmeasurable:
+        lines.append(f"  측정 불가  {reason}")
+    return "\n".join(lines)
+
+
 def _resolve_transcript(session_arg: str) -> Path:
     """세션 ID 또는 transcript 파일 경로를 받아 파일 경로를 낸다. 못 찾으면 `FileNotFoundError`."""
     given = Path(session_arg)
@@ -458,6 +488,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     q.add_argument("--session", metavar="ID", help="이 세션 ID의 구간 소진량을 낸다")
     q.add_argument(
+        "--window",
+        choices=("seven_day", "five_hour"),
+        help="지금 열려 있는 이 창이 쓴 토큰을 낸다. 창 경계는 마지막 표본의 resets_at이 정한다",
+    )
+    q.add_argument(
+        "--index-db",
+        default=str(_DEFAULT_DB),
+        help=f"--window가 토큰을 읽을 코퍼스 인덱스 (기본 {_DEFAULT_DB})",
+    )
+    q.add_argument(
+        "--plan-monthly",
+        type=float,
+        metavar="USD",
+        help="--window seven_day와 함께, 월 구독 요금. 한도 전체를 쓸 때의 1M 토큰당 단가를 낸다",
+    )
+    q.add_argument(
         "--from", dest="since", type=int, metavar="N", help="--session과 함께, N번째 요청부터"
     )
     q.add_argument("--until", type=int, metavar="M", help="--session과 함께, M번째 요청까지")
@@ -495,13 +541,37 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"db": args.db, **asdict(idx_report)}, ensure_ascii=False))
         return 0
     if args.command == "quota":
-        if args.collect and args.session:
-            print("--collect와 --session은 같이 쓸 수 없다", file=sys.stderr)
+        chosen = [
+            n
+            for n, v in (
+                ("--collect", args.collect),
+                ("--session", args.session),
+                ("--window", args.window),
+            )
+            if v
+        ]
+        if len(chosen) > 1:
+            print(f"{', '.join(chosen)}는 같이 쓸 수 없다", file=sys.stderr)
             return 1
         if args.collect:
             return run_collect(Path(args.db), child_cmd)
+        if args.window:
+            with (
+                closing(sqlite3.connect(args.db)) as qconn,
+                closing(sqlite3.connect(args.index_db)) as iconn,
+            ):
+                usage = window_usage(qconn, iconn, args.window, args.plan_monthly)
+            if usage is None:
+                print(f"{args.window} 창의 표본이 없다 — 창 경계를 알 수 없다", file=sys.stderr)
+                return 1
+            print(
+                _window_table(usage)
+                if args.table
+                else json.dumps(_window_dict(usage), ensure_ascii=False)
+            )
+            return 0
         if not args.session:
-            print("--collect 또는 --session이 필요하다", file=sys.stderr)
+            print("--collect 또는 --session 또는 --window가 필요하다", file=sys.stderr)
             return 1
         range_error = _validate_request_range(args.since, args.until)
         if range_error is not None:
