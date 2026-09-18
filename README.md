@@ -37,6 +37,7 @@ claude plugin install claude-kit@claude-kit
 | **ai-doc-improver** | AI가 읽는 문서(CLAUDE.md, SKILL.md 등)를 토큰 밀도, instruction 준수율, 서술 정확도로 점검해 정리 |
 | **prompt-forge** | 대충 던진 요청을 인터뷰로 파고들어 의도 명세(intent spec)로 — 문구가 아니라 의도를 벼린다 · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/prompt-forge/prompt-forge-guide.html) |
 | **memory-manager** | `~/.claude` 파일 메모리의 중복·오배치·인덱스 bloat 정리 |
+| **token-usage-review** | `usage` 도구로 세션 기록의 잔존 비용을 재서 어느 스킬, 도구 결과, 파일이 토큰을 많이 쓰는지 리포트하고 개선안을 제시(수정은 범위 밖) |
 
 ### ✅ 품질 게이트
 
@@ -107,7 +108,7 @@ python3 plugins/claude-kit/hooks/tests/test_squash_merge_guard.py
 - **Apple Notes 권한** — 첫 실행 시 macOS 자동화 권한 허용 필요.
 - **브라우저** — `whiteboard`(렌더 검증)·`html-to-image`·`browser-session`은 Chrome/Chromium을 쓴다.
 
-> yt-dlp·whisper 등 Python 의존성은 첫 실행 때 `~/.cache/capture-kit` 격리 venv에 자동 설치된다 — 전역 환경을 건드리지 않는다.
+> yt-dlp·whisper 등 Python 의존성은 첫 실행 때 `uvx`가 `~/.cache/uv` 아래 격리 환경에 자동 설치한다 — 전역 환경을 건드리지 않는다.
 
 ## 트러블슈팅 (iphone-notes-digest)
 

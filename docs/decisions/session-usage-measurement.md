@@ -35,7 +35,7 @@
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync pytest -q >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ruff check . >/dev/null 2>&1 && uv run --directory plugins/claude-kit/tools/usage --no-sync ruff format --check . >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
   {"cmd": "uv run --directory plugins/claude-kit/tools/usage --no-sync ty check >/dev/null 2>&1 && echo pass || echo fail", "expect": "pass"},
-  {"cmd": "[ -e plugins/claude-kit/tools/usage/src/usage/quota.py ] && echo present || echo absent", "expect": "absent"}
+  {"cmd": "[ -e plugins/claude-kit/tools/usage/src/usage/quota.py ] && echo present || echo absent", "expect": "present"}
 ]}
 ```
 
