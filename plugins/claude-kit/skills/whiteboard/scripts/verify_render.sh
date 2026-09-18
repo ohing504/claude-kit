@@ -45,7 +45,8 @@ if [ "$bytes" -lt 80 ] || ! grep -qi '<body' "$DOM"; then
 fi
 
 # 2) Mermaid: 소스에 .mermaid 블록을 썼는데, 렌더 후 DOM에 raw 문법이 텍스트로 남아있으면 실패
-src_mermaid=$(grep -c 'class="mermaid"' "$HTML" 2>/dev/null || true)
+# 출현 수로 센다 — `grep -c`는 행 수라, 한 행에 블록이 둘이면 아래 processed(출현 수)와 단위가 어긋난다.
+src_mermaid=$(grep -o 'class="mermaid"' "$HTML" 2>/dev/null | wc -l | tr -d ' ')
 src_mermaid=${src_mermaid:-0}
 if [ "$src_mermaid" -gt 0 ]; then
   processed=$(grep -o 'data-processed="true"' "$DOM" 2>/dev/null | wc -l | tr -d ' ')
