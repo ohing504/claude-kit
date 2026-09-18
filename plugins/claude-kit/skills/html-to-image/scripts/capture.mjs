@@ -172,31 +172,42 @@ async function main() {
   // viewport·deviceScaleFactor가 같은 연속 job은 context를 재사용(생성 100~200ms 절약). 50장마다 재생성으로 누수 방지.
   const cache = new Map();
   const counts = new Map();
+  // 한 장이 실패해도 나머지는 계속 찍는다. 실패는 모아서 끝에 알리고 종료코드 1로 끝낸다.
+  const failures = [];
   try {
-    for (const job of jobs) {
-      if ((job.engine ?? 'playwright') === 'satori') {
-        console.log(`✓ ${await captureSatori(job)}`);
-        continue;
+    for (const [index, job] of jobs.entries()) {
+      try {
+        if ((job.engine ?? 'playwright') === 'satori') {
+          console.log(`✓ ${await captureSatori(job)}`);
+          continue;
+        }
+        const { width, height, scale } = resolveSize(job);
+        const key = ctxKey(width, height, scale);
+        let ctx = cache.get(key);
+        const n = (counts.get(key) ?? 0) + 1;
+        if (ctx && n % 50 === 0) {
+          await ctx.close();
+          ctx = undefined;
+        }
+        if (!ctx) {
+          ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale });
+          cache.set(key, ctx);
+        }
+        counts.set(key, n);
+        const saved = await capture(ctx, job);
+        console.log(`✓ ${saved}`);
+      } catch (e) {
+        const label = job.out ?? job.html ?? job.url ?? `#${index + 1}`;
+        failures.push({ label, message: e.message });
+        console.error(`✗ ${label}: ${e.message}`);
       }
-      const { width, height, scale } = resolveSize(job);
-      const key = ctxKey(width, height, scale);
-      let ctx = cache.get(key);
-      const n = (counts.get(key) ?? 0) + 1;
-      if (ctx && n % 50 === 0) {
-        await ctx.close();
-        ctx = undefined;
-      }
-      if (!ctx) {
-        ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale });
-        cache.set(key, ctx);
-      }
-      counts.set(key, n);
-      const saved = await capture(ctx, job);
-      console.log(`✓ ${saved}`);
     }
   } finally {
     for (const ctx of cache.values()) await ctx.close();
     if (browser) await browser.close();
+  }
+  if (failures.length) {
+    throw new Error(`${jobs.length}장 중 ${failures.length}장 실패: ${failures.map((f) => f.label).join(', ')}`);
   }
 }
 
