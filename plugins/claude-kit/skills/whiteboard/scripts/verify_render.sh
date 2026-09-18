@@ -36,17 +36,26 @@ trap 'rm -f "$DOM"' EXIT
 
 fail=0
 
-# 1) 렌더 자체가 됐나 (빈 응답 = 로드 실패). dump-dom은 작은 페이지를 작게 반환하므로
-#    임계는 낮게 — <body> 태그가 아예 없으면 로드 실패로 본다.
+# 1) 렌더 자체가 됐나. 로드에 실패하면 dump가 비어 <body>가 없다.
+#    바이트 수를 임계로 쓰지 않는다 — 정상인 작은 페이지가 걸린다(실측: 유효한 49B 페이지가 FAIL).
 bytes=$(wc -c < "$DOM" | tr -d ' ')
-if [ "$bytes" -lt 80 ] || ! grep -qi '<body' "$DOM"; then
-  echo "FAIL: 렌더 DOM이 비정상(${bytes}B, body 없음) — 페이지 로드 실패."
+if ! grep -qi '<body' "$DOM"; then
+  echo "FAIL: 렌더 DOM에 <body>가 없음(${bytes}B) — 페이지 로드 실패."
   exit 1
 fi
 
 # 2) Mermaid: 소스에 .mermaid 블록을 썼는데, 렌더 후 DOM에 raw 문법이 텍스트로 남아있으면 실패
 # 출현 수로 센다 — `grep -c`는 행 수라, 한 행에 블록이 둘이면 아래 processed(출현 수)와 단위가 어긋난다.
-src_mermaid=$(grep -o 'class="mermaid"' "$HTML" 2>/dev/null | wc -l | tr -d ' ')
+# HTML 주석은 먼저 지운다 — design-system.md의 골격 템플릿은 `<pre class="mermaid">`를 주석으로
+# 예시해 두어, 그대로 둔 채 세면 실제 블록보다 많이 나와 렌더가 성공해도 FAIL이 된다.
+strip_comments() {
+  if command -v perl >/dev/null 2>&1; then
+    perl -0777 -pe 's/<!--.*?-->//gs' "$1" 2>/dev/null
+  else
+    cat "$1"
+  fi
+}
+src_mermaid=$(strip_comments "$HTML" | grep -o 'class="mermaid"' | wc -l | tr -d ' ')
 src_mermaid=${src_mermaid:-0}
 if [ "$src_mermaid" -gt 0 ]; then
   processed=$(grep -o 'data-processed="true"' "$DOM" 2>/dev/null | wc -l | tr -d ' ')
