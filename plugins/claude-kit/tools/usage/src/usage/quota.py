@@ -320,6 +320,7 @@ class WindowUsage:
     by_model: list[ModelTokens]
     projected_full: int | None
     plan_monthly_usd: float | None
+    plan_weekly_usd: float | None
     effective_usd_per_mtok: float | None
     already_reset: bool
     unmeasurable: list[str]
@@ -358,13 +359,16 @@ def window_usage(
         return None
     observed_at, window = latest
     start, end = window_span(window.resets_at, kind)
-    # `requests.timestamp`는 'Z' 접미의 ISO8601이라, 초까지 자른 경계 문자열과의 사전순 비교가
-    # 시각 비교와 같다. 창이 열린 시각은 포함하고 초기화되는 시각은 다음 창 몫이라 뺀다.
+    # 타임스탬프를 문자열로 비교하지 않는다 — 표기가 'Z'에서 타임존 오프셋으로 바뀌면 사전순이
+    # 시각 순서와 어긋나고, 그 어긋남은 크래시가 아니라 조용히 틀린 개수로 나온다. `strftime('%s')`가
+    # 두 표기를 모두 같은 epoch으로 바꾼다. 창이 열린 시각은 포함하고 초기화되는 시각은 다음 창 몫이라 뺀다.
     rows = index_conn.execute(
         "SELECT model, SUM(input_tokens + cache_read_tokens + cache_write_tokens + output_tokens),"
-        " SUM(output_tokens), COUNT(*) FROM requests WHERE timestamp >= ? AND timestamp < ?"
+        " SUM(output_tokens), COUNT(*) FROM requests"
+        " WHERE CAST(strftime('%s', timestamp) AS INTEGER) >= ?"
+        " AND CAST(strftime('%s', timestamp) AS INTEGER) < ?"
         " GROUP BY model ORDER BY 2 DESC",
-        (start.strftime("%Y-%m-%dT%H:%M:%S"), end.strftime("%Y-%m-%dT%H:%M:%S")),
+        (int(start.timestamp()), int(end.timestamp())),
     ).fetchall()
     by_model = [ModelTokens(r[0], int(r[1]), int(r[2]), int(r[3])) for r in rows]
     total = sum(m.total_tokens for m in by_model)
@@ -373,17 +377,22 @@ def window_usage(
     projected: int | None = None
     if window.used_percentage <= 0:
         unmeasurable.append("소진율이 0이라 한도 전체를 환산할 수 없다")
+    elif not by_model:
+        # 소진율은 있는데 이 인덱스에는 그 창의 요청이 하나도 없다. 0을 그대로 내면 환산치가
+        # 0이 되어 "안 썼다"로 읽힌다 — 실제로는 인덱스가 오래됐거나 다른 기기에서 쓴 것이다.
+        unmeasurable.append("이 인덱스에 그 창의 요청이 없다 — `usage index`를 먼저 돌린다")
     else:
         projected = round(total / (window.used_percentage / 100))
 
     effective: float | None = None
+    weekly = None if plan_monthly is None else plan_monthly / _WEEKS_PER_MONTH
     if plan_monthly is not None:
         if kind != "seven_day":
             # 5시간 창은 하루에 여러 번 열리고 그 전부를 쓰지도 않아, 월 요금을 창 하나에
             # 배분할 근거가 없다. 주간 창만 구독 주기와 1:1로 맞는다.
             unmeasurable.append("월 요금은 주간 창에만 배분할 수 있다")
         elif projected:
-            effective = (plan_monthly / _WEEKS_PER_MONTH) / (projected / 1e6)
+            effective = weekly / (projected / 1e6) if weekly is not None else None
         else:
             unmeasurable.append("한도 전체를 환산하지 못해 단가를 낼 수 없다")
 
@@ -399,6 +408,7 @@ def window_usage(
         by_model=by_model,
         projected_full=projected,
         plan_monthly_usd=plan_monthly,
+        plan_weekly_usd=weekly,
         effective_usd_per_mtok=effective,
         already_reset=(now or datetime.now(UTC)) >= end,
         unmeasurable=unmeasurable,

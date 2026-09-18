@@ -395,10 +395,7 @@ def _quota_table(attr: Attribution) -> str:
 
 
 def _window_dict(u: WindowUsage) -> dict[str, object]:
-    return {
-        "measured": _QUOTA_MEASURED,
-        **{k: v for k, v in asdict(u).items()},
-    }
+    return {"measured": _QUOTA_MEASURED, **asdict(u)}
 
 
 def _window_table(u: WindowUsage) -> str:
@@ -413,10 +410,9 @@ def _window_table(u: WindowUsage) -> str:
         lines.append(f"  {m.model:<20}{m.total_tokens:>16,}  출력 {m.output_tokens:>12,}")
     if u.projected_full is not None:
         lines.append(f"한도 100% 환산  {u.projected_full:,} 토큰")
-    if u.effective_usd_per_mtok is not None:
-        weekly = (u.plan_monthly_usd or 0) * 12 / 52
+    if u.effective_usd_per_mtok is not None and u.plan_weekly_usd is not None:
         lines.append(
-            f"월 ${u.plan_monthly_usd:,.0f} (주 ${weekly:,.2f})"
+            f"월 ${u.plan_monthly_usd:,.0f} (주 ${u.plan_weekly_usd:,.2f})"
             f"  →  ${u.effective_usd_per_mtok:.4f} / 1M 토큰"
         )
     for reason in u.unmeasurable:
@@ -551,7 +547,10 @@ def main(argv: list[str] | None = None) -> int:
             if v
         ]
         if len(chosen) > 1:
-            print(f"{', '.join(chosen)}는 같이 쓸 수 없다", file=sys.stderr)
+            print(f"{', '.join(chosen)} — 이 중 하나만 쓸 수 있다", file=sys.stderr)
+            return 1
+        if args.plan_monthly is not None and args.plan_monthly <= 0:
+            print("--plan-monthly는 양수여야 한다", file=sys.stderr)
             return 1
         if args.collect:
             return run_collect(Path(args.db), child_cmd)

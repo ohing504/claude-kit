@@ -664,7 +664,7 @@ def test_cli_window_without_a_sample_fails_instead_of_guessing(tmp_path: Path, c
 
 def test_cli_window_and_session_cannot_be_asked_for_together(tmp_path: Path, capsys) -> None:
     assert main(_window_argv(tmp_path, "--session", "s1")) == 1
-    assert "같이 쓸 수 없다" in capsys.readouterr().err
+    assert "하나만 쓸 수 있다" in capsys.readouterr().err
 
 
 def test_a_window_that_already_reset_is_marked_stale(tmp_path: Path) -> None:
@@ -679,3 +679,56 @@ def test_a_window_that_already_reset_is_marked_stale(tmp_path: Path) -> None:
         during = window_usage(q, idx, "seven_day", now=datetime(2026, 9, 18, 15, 0, tzinfo=UTC))
     assert after is not None and after.already_reset
     assert during is not None and not during.already_reset
+
+
+def test_requests_are_cut_by_time_not_by_string_shape(tmp_path: Path) -> None:
+    """경계 판정이 타임스탬프 표기에 기대면 안 된다 — 표기가 달라도 같은 시각은 같게 잘린다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with (
+        closing(index_connect(tmp_path / "i.db")) as idx,
+        closing(sqlite3.connect(tmp_path / "q.db")) as q,
+    ):
+        _request(idx, "2026-09-15T00:00:00.000Z")
+        _request(idx, "2026-09-15T09:00:00+09:00")  # 09-15 00:00Z — 창 안
+        _request(idx, "2026-09-12T00:59:59+09:00")  # 09-11 15:59:59Z — 창 시작 직전
+        usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert usage.requests == 2
+
+
+def test_an_empty_window_says_so_instead_of_reporting_zero(tmp_path: Path) -> None:
+    """소진율이 있는데 인덱스에 그 창의 요청이 없으면, 0 토큰을 그대로 내면 안 된다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with (
+        closing(index_connect(tmp_path / "i.db")) as idx,
+        closing(sqlite3.connect(tmp_path / "q.db")) as q,
+    ):
+        _request(idx, "2026-09-20T00:00:00.000Z")  # 창 밖
+        usage = window_usage(q, idx, "seven_day")
+    assert usage is not None
+    assert usage.total_tokens == 0
+    assert usage.projected_full is None
+    assert any("요청이 없다" in r for r in usage.unmeasurable)
+
+
+def test_the_weekly_price_is_carried_so_the_caller_does_not_recompute_it(tmp_path: Path) -> None:
+    """월 요금을 주 요금으로 바꾸는 계산이 두 곳에 있으면 한쪽만 바뀐다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with (
+        closing(index_connect(tmp_path / "i.db")) as idx,
+        closing(sqlite3.connect(tmp_path / "q.db")) as q,
+    ):
+        _request(idx, "2026-09-15T00:00:00.000Z")
+        usage = window_usage(q, idx, "seven_day", plan_monthly=200.0)
+    assert usage is not None
+    assert usage.plan_weekly_usd is not None
+    assert round(usage.plan_weekly_usd, 2) == 46.15
+
+
+def test_a_plan_price_that_is_not_positive_is_refused(tmp_path: Path, capsys) -> None:
+    """0이나 음수를 받아 무의미한 단가를 내지 않는다."""
+    _sample(tmp_path / "q.db", 50.0)
+    with closing(index_connect(tmp_path / "i.db")) as idx:
+        _request(idx, "2026-09-15T00:00:00.000Z")
+    assert main(_window_argv(tmp_path, "--plan-monthly", "0")) == 1
+    assert "양수" in capsys.readouterr().err
