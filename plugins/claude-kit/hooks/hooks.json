@@ -1,4 +1,5 @@
 {
+  "description": "gh issue 본문 길이와 gh pr merge --squash 메시지 규격을 실행 전에 검사한다",
   "hooks": {
     "PreToolUse": [
       {
@@ -6,11 +7,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/squash-merge-guard.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/squash-merge-guard.sh",
+            "args": []
           },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/issue-guard.sh"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/issue-guard.sh",
+            "args": []
           }
         ]
       }

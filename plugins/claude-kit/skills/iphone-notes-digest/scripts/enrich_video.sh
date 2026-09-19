@@ -27,7 +27,8 @@ set -euo pipefail
 
 URL="${1:?사용: enrich_video.sh <URL> [캡션최소길이] [언어]}"
 MIN_CAPTION="${2:-50}"
-LANG="${3:-ko}"
+# 로케일 변수 LANG을 덮지 않는다 — 자식 프로세스(uvx, python)에 존재하지 않는 로케일이 넘어간다.
+WHISPER_LANG="${3:-ko}"
 MODEL="${WHISPER_MODEL:-mlx-community/whisper-large-v3-turbo}"
 SCRATCH="${SCRATCH_DIR:-/tmp/notes-enrich}"
 mkdir -p "$SCRATCH"
@@ -117,7 +118,7 @@ AUDIO="$SCRATCH/$VID.mp3"
 # STT 엔진은 _env.sh가 플랫폼에 따라 선택(CK_WHISPER_CMD)
 if [[ "$(uname -m)" == "arm64" ]]; then
   echo "STT_SOURCE: mlx-whisper ($MODEL)"
-  $CK_WHISPER_CMD "$AUDIO" --model "$MODEL" --language "$LANG" \
+  $CK_WHISPER_CMD "$AUDIO" --model "$MODEL" --language "$WHISPER_LANG" \
     --output-dir "$SCRATCH" --output-name "$VID" -f txt >/dev/null 2>&1
   echo "STT:"
   cat "$SCRATCH/$VID.txt"
@@ -125,7 +126,7 @@ else
   # faster-whisper CLI. 모델은 turbo 계열 이름이 다를 수 있어 large-v3로 폴백.
   FW_MODEL="${FASTER_WHISPER_MODEL:-large-v3}"
   echo "STT_SOURCE: faster-whisper ($FW_MODEL)"
-  $CK_WHISPER_CMD "$AUDIO" --model "$FW_MODEL" --language "$LANG" \
+  $CK_WHISPER_CMD "$AUDIO" --model "$FW_MODEL" --language "$WHISPER_LANG" \
     --output_dir "$SCRATCH" --output_format txt >/dev/null 2>&1
   echo "STT:"
   cat "$SCRATCH/$VID.txt"
