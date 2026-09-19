@@ -1,6 +1,6 @@
 ---
 name: commit
-description: 변경을 commit하고 요청 범위에 따라 push·PR 생성까지 확장. commit message·PR 본문은 git diff·log 사실만 반영(세션 대화·디버깅 과정 차단). "커밋해줘"는 commit만, "커밋하고 PR"·"PR 올려줘"는 push+PR — push·PR 전 확인, 모호하면 commit만.
+description: 변경을 commit하고 요청 범위에 따라 push·PR 생성까지 확장. commit message·PR 본문은 git diff·log 사실만 반영(세션 대화·디버깅 과정 차단). "커밋해줘"는 commit만, "커밋하고 PR"·"PR 만들어줘"는 push+PR — push·PR 전 확인, 모호하면 commit만.
 allowed-tools: Bash(git:*), Bash(gh pr create:*)
 ---
 
@@ -18,7 +18,7 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*)
 
 발화에서 작업 범위를 정한다 — 모호하면 *commit만*(좁게·안전), push·PR은 명시 의도일 때만:
 - **commit만**: "커밋해줘", "커밋", 범위 미언급
-- **commit + push + PR**: "커밋하고 PR", "PR 올려줘", "푸시하고 PR" 등 push·PR 명시
+- **commit + push + PR**: "커밋하고 PR", "PR 만들어줘", "푸시하고 PR" 등 push·PR 명시
 - commit만 한 뒤 push·PR이 필요해 보이면 "push·PR도 진행할까요?" 한 줄 제안 (강제 X)
 
 ## commit (공통)
