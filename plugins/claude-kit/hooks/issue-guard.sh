@@ -14,7 +14,7 @@ case "$input" in
 esac
 
 if ! command -v python3 >/dev/null 2>&1; then
-  # jq도 없을 수 있어 JSON을 직접 낸다
+  # jq도 없을 수 있어 printf로 JSON을 직접 출력한다
   printf '{"systemMessage":"issue-guard: python3이 없어 이슈 본문 길이 검사를 건너뜁니다.","hookSpecificOutput":{"hookEventName":"PreToolUse"}}\n'
   exit 0
 fi

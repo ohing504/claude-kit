@@ -76,7 +76,7 @@ cd "${CLAUDE_SKILL_DIR}/scripts" && npm install && npx playwright install chromi
 - **`--url`로 로컬 dev 서버**: 서버가 실행 중인지 먼저 확인하고 캡처한다. 서버가 없으면 연결 오류로 빈 이미지가 나온다.
 - **satori 엔진에 미지원 CSS**: `display:grid`·`z-index`·`position:fixed`·`calc()` 등을 쓰면 satori는 렌더를 건너뛰어 레이아웃이 깨진다. playwright(기본)로 폴백하거나 HTML을 flexbox 전용으로 바꾼다.
 - **출력 경로 미지정**: `--out`은 필수다. 생략하면 스크립트가 오류로 끝난다. batch `--manifest`에선 각 항목의 `out` 필드가 필수다.
-- **batch 중 일부 실패**: manifest N장 중 일부가 렌더 실패하면 그 장만 `✗`로 보고하고 나머지는 계속 찍는다. 끝에 실패 목록을 내고 종료코드 1로 끝나므로, 종료코드만 보고 전체 실패로 단정하지 말고 `✓` 행을 세어 사용자에게 알린다.
+- **batch 중 일부 실패**: manifest N장 중 일부가 렌더 실패하면 그 장만 `✗`로 stderr에 출력하고 나머지 항목은 계속 캡처한다. 끝에 실패 목록을 출력하고 종료코드 1로 끝나므로, 종료코드만 보고 전체 실패로 단정하지 말고 `✓` 행을 세어 사용자에게 알린다.
 
 ## 참고 자산
 

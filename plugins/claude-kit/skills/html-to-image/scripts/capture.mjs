@@ -172,7 +172,7 @@ async function main() {
   // viewport·deviceScaleFactor가 같은 연속 job은 context를 재사용(생성 100~200ms 절약). 50장마다 재생성으로 누수 방지.
   const cache = new Map();
   const counts = new Map();
-  // 한 장이 실패해도 나머지는 계속 찍는다. 실패는 모아서 끝에 알리고 종료코드 1로 끝낸다.
+  // 한 장이 실패해도 나머지 항목은 계속 캡처한다. 실패는 모아서 끝에 출력하고 종료코드 1로 끝낸다.
   const failures = [];
   try {
     for (const [index, job] of jobs.entries()) {
