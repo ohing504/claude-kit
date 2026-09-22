@@ -5,9 +5,11 @@
 72%가 사용자 요청 없이 만들어졌고, 사용자가 "이슈 계속 새로 만들지 말라"고 쓴
 바로 그 메시지에서도 생성됐다. 같은 저장소가 만든 이슈의 29%를 나중에 삭제했다.
 
-두 축으로 나눈다:
+세 축으로 나눈다:
   길이 초과      → deny.  기계 판정이라 오탐이 없다. create와 edit 둘 다 잰다 —
                           create만 재면 edit --body-file로 상한을 우회한다.
+  `## 왜` 누락   → create는 deny, edit은 경고. edit은 옛 규격으로 열린 이슈를
+                          고치는 경로라, 막으면 정리 자체를 못 한다.
   사용자 미요청  → 경고.  판정이 부정확해 차단하면 정당한 생성까지 막힌다.
                           create에만. edit은 기존 이슈 정리라 요청 발화가 없는 게 정상이다.
 
@@ -20,9 +22,20 @@ import sys
 
 from gh_command import COMMAND_POSITION, segments, split_heredocs
 
-# 4블록(무엇을/완료 조건/시작 지점/하지 말 것)이면 충분한 상한.
+# 상시 4블록(왜/완료 조건/시작 지점/하지 말 것)이면 충분한 상한.
 # 붕괴한 저장소 본문 중앙값 1,957자, 정상 운영 저장소 880~1,061자.
-BODY_LIMIT = 1200
+# 옛 상한 1,200자는 실측상 binding이었다 — 한 저장소의 열린 이슈 30건이
+# 중앙값 858자인데 최대가 1,199자로 상한에 붙어 있었다. 넘친 것은 노이즈가
+# 아니라 `## 왜`의 원인과 손해였다.
+BODY_LIMIT = 1600
+# 착수 전 합의할 것을 담은 이슈만 더 쓴다. 선택지를 실제로 나열하고 좌표를
+# 붙이는 자리라 상시 블록보다 길다.
+PARLEY_LIMIT = 1900
+
+# 헤딩이 곧 지시다. `## 왜`는 현상만 쓴 본문을 막고, `## 착수 전 합의할 것`은
+# 정해지지 않은 것을 완료 조건 체크박스로 위장해 박는 것을 막는다.
+WHY_HEADING = "## 왜"
+PARLEY_HEADING = "## 착수 전 합의할 것"
 
 SKILL_REF = "작성 규격은 /git-issue 스킬."
 
@@ -85,19 +98,48 @@ def resolve_path(raw, cwd, env):
     return os.path.join(cwd, path) if cwd else None
 
 
+def limit_for(body):
+    return PARLEY_LIMIT if PARLEY_HEADING in body else BODY_LIMIT
+
+
 def check_length(body):
-    if not body or len(body) <= BODY_LIMIT:
+    limit = limit_for(body)
+    if not body or len(body) <= limit:
         return
     raise Deny(
-        f"이슈 본문이 {len(body)}자로 상한 {BODY_LIMIT}자를 넘습니다. 본문이 길수록 "
+        f"이슈 본문이 {len(body)}자로 상한 {limit}자를 넘습니다. 본문이 길수록 "
         "낡을 면적이 커지고 머지율이 떨어집니다(길이를 줄이면 단위당 +9%).\n"
         "\n"
         "넘친 내용은 대개 이 넷 중 하나입니다 — 다음 자리로 보내세요.\n"
         "  시점 실측(N줄, N토큰, permalink) → 재실행 명령(`wc -l <path>`)으로 대체\n"
-        "  미결과 결정                     → ADR. 완료 조건 첫 칸을 '결정하고 ADR에 남긴다'로\n"
+        "  확정된 결정과 그 근거            → ADR. 이슈는 그 경로만 가리킵니다\n"
         "  환경과 아키텍처 배경             → CLAUDE.md 또는 AGENTS.md\n"
         "  진행 상황                       → 적지 않음. 상태는 라벨에서 읽습니다\n"
+        "\n"
+        f"아직 정해지지 않은 것은 빼지 말고 `{PARLEY_HEADING}` 블록에 남기세요 — "
+        f"그 블록이 있는 이슈는 상한이 {PARLEY_LIMIT}자입니다.\n"
         "\n" + SKILL_REF)
+
+
+def check_structure(body, actions, warnings):
+    """`## 왜`가 없으면 제목을 되풀이한 본문이 통과한다.
+
+    create는 막고 edit은 경고만 한다 — edit은 옛 규격으로 열린 이슈를 고치는
+    경로라, 막으면 정리 자체를 못 한다.
+    """
+    if not body or WHY_HEADING in body:
+        return
+    message = (
+        f"이슈 본문에 `{WHY_HEADING}` 블록이 없습니다. 무엇이 안 되는지는 제목이 "
+        "이미 갖고 있어, 그것만 되풀이한 본문은 착수 세션이 손해를 재지 못하게 "
+        "합니다.\n"
+        "\n"
+        f"`{WHY_HEADING}`에 셋을 씁니다 — 무엇이 안 되고(현상), 왜 그렇고(원인), "
+        "그래서 무엇이 막히는가(손해).\n"
+        "\n" + SKILL_REF)
+    if "create" in actions:
+        raise Deny(message)
+    warnings.append(message)
 
 
 def check_api_bypass(cmd_exec):
@@ -110,24 +152,30 @@ def check_api_bypass(cmd_exec):
     if not (API_BODY_FIELD.search(cmd_exec) or API_INPUT_FLAG.search(cmd_exec)):
         return
     raise Deny(
-        f"`gh api`로 이슈 본문을 쓰면 본문 길이 규격({BODY_LIMIT}자)이 검사되지 않습니다.\n"
+        "`gh api`로 이슈 본문을 쓰면 본문 길이와 블록 구성이 검사되지 않습니다.\n"
         "\n"
         "`gh issue create --body-file <path>` 또는 `gh issue edit <N> --body-file <path>`로 쓰세요.\n"
         "\n" + SKILL_REF)
 
 
-def check_bodies(cmd_exec, heredocs, cwd, warnings):
+def check_bodies(cmd_exec, heredocs, cwd, actions, warnings):
     # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
     # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
     body_files = [m.group(1).strip("\"'")
                   for segment in segments(cmd_exec, GH_INVOCATION)
                   for m in BODY_FILE_FLAG.finditer(segment)]
     env = shell_assignments(cmd_exec)
+    measured = []
+
+    def measure(body):
+        check_length(body)
+        measured.append(body)
+
     for raw in body_files:
         if raw == "-":
             # 표준입력으로 넘긴 본문은 hook이 읽을 수 없어 길이를 잴 방법이 없다.
             raise Deny(
-                f"본문을 표준입력(`--body-file -`)으로 넘기면 길이 규격({BODY_LIMIT}자)을 "
+                "본문을 표준입력(`--body-file -`)으로 넘기면 길이와 블록 구성을 "
                 "검사할 수 없습니다.\n"
                 "\n"
                 "본문을 파일로 쓰고 `--body-file <path>`로 넘기세요.\n"
@@ -135,7 +183,7 @@ def check_bodies(cmd_exec, heredocs, cwd, warnings):
         path = resolve_path(raw, cwd, env)
         try:
             with open(path, encoding="utf-8") as f:
-                check_length(f.read())
+                measure(f.read())
             continue
         except (OSError, TypeError):
             pass
@@ -149,11 +197,16 @@ def check_bodies(cmd_exec, heredocs, cwd, warnings):
     # 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 잰다.
     for opener, body in heredocs:
         if BODY_HEREDOC_OPENER.search(opener) or any(p in opener for p in body_files):
-            check_length(body)
+            measure(body)
 
     # body-file과 같은 이유로 전부 잰다 — 첫 하나만 재면 체인 뒤쪽 본문이 통과한다.
     for m in INLINE_BODY_FLAG.finditer(cmd_exec):
-        check_length(m.group(1) or m.group(2))
+        measure(m.group(1) or m.group(2))
+
+    # 한 명령이 제목과 본문을 함께 넘기면 위 순회에 제목도 섞인다. 제목은 본문보다
+    # 짧으므로 가장 긴 것 하나만 블록 구성을 본다 — 제목에 `## 왜`를 요구하지 않는다.
+    if measured:
+        check_structure(max(measured, key=len), actions, warnings)
 
 
 def last_user_message(transcript_path):
@@ -197,7 +250,7 @@ def judge(payload):
         if "api" in actions:
             check_api_bypass(cmd_exec)
         if actions & {"create", "edit"}:
-            check_bodies(cmd_exec, heredocs, payload.get("cwd", ""), warnings)
+            check_bodies(cmd_exec, heredocs, payload.get("cwd", ""), actions, warnings)
     except Deny as d:
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse",

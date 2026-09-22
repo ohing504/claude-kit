@@ -15,20 +15,38 @@ import unittest
 
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "issue-guard.sh")
 
-LONG = "가" * 1300   # 상한 1,200자 초과
-SHORT = "가" * 100
+WHY = "## 왜\n이유\n\n"
+PARLEY = "## 착수 전 합의할 것\n- 무엇을 정할지\n\n"
+
+
+def body(total, *blocks):
+    """블록을 앞에 두고 전체가 정확히 total자가 되게 채운다."""
+    head = "".join(blocks)
+    return head + "가" * (total - len(head))
+
+
+LONG = body(1700, WHY)      # 기본 상한 1,600자 초과
+SHORT = body(300, WHY)
+MID = body(1500, WHY)                   # 옛 상한 초과, 새 상한 이하
+PARLEYED = body(1850, WHY, PARLEY)      # 합의 블록이 있어 1,900자까지 허용
+UNPARLEYED = body(1850, WHY)            # 같은 길이인데 합의 블록이 없다
+NO_WHY = "가" * 300                     # 구조 위반
 
 
 class GuardCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.long_file = os.path.join(cls.tmp.name, "long.md")
-        cls.short_file = os.path.join(cls.tmp.name, "short.md")
-        with open(cls.long_file, "w", encoding="utf-8") as f:
-            f.write(LONG)
-        with open(cls.short_file, "w", encoding="utf-8") as f:
-            f.write(SHORT)
+        cls.files = {}
+        for name, text in (("long", LONG), ("short", SHORT), ("mid", MID),
+                           ("parleyed", PARLEYED), ("unparleyed", UNPARLEYED),
+                           ("no_why", NO_WHY)):
+            path = os.path.join(cls.tmp.name, f"{name}.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            cls.files[name] = path
+        cls.long_file = cls.files["long"]
+        cls.short_file = cls.files["short"]
 
     @classmethod
     def tearDownClass(cls):
@@ -259,6 +277,65 @@ class AllowedInvocations(GuardCase):
         cmd = (f"cat > notes.md <<'EOF'\n{LONG}\nEOF\n"
                f"gh issue create -F {self.short_file}")
         self.assertEqual(self.verdict(cmd), "allow")
+
+
+class LimitDependsOnParleyBlock(GuardCase):
+    """상한은 하나가 아니다 — 착수 전 합의할 것을 담은 이슈는 더 길어도 된다."""
+
+    def test_mid_length_passes_new_limit(self):
+        """옛 상한 1,200자는 실측상 binding이었다 — 열린 이슈 30건의 최대가 1,199자."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['mid']}"), "allow")
+
+    def test_parley_block_raises_limit(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['parleyed']}"), "allow")
+
+    def test_same_length_without_parley_block_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['unparleyed']}"), "deny")
+
+    def test_parley_block_does_not_lift_the_upper_limit(self):
+        over = PARLEY + "가" * 2000
+        self.assertEqual(self.verdict(f"gh issue create -b '{WHY}{over}'"), "deny")
+
+
+class WhyBlockIsRequired(GuardCase):
+    """`## 왜`가 없으면 제목을 되풀이한 본문이 통과한다 — 착수 세션이 손해를 못 잰다."""
+
+    def test_create_without_why_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['no_why']}"), "deny")
+
+    def test_edit_without_why_warns_only(self):
+        """옛 규격으로 열린 이슈를 고치는 경로다. 막으면 정리 자체를 못 한다."""
+        cmd = f"gh issue edit 12 -F {self.files['no_why']}"
+        self.assertEqual(self.verdict(cmd), "allow")
+        self.assertIn("## 왜", self.system_message(cmd) or "")
+
+    def test_inline_body_without_why_is_denied(self):
+        """본문 파일 경로만 검사하면 인라인으로 우회된다."""
+        self.assertEqual(self.verdict(f"gh issue create -b '{NO_WHY}'"), "deny")
+
+    def test_heredoc_body_without_why_is_denied(self):
+        cmd = f"gh issue create --body \"$(cat <<'EOF'\n{NO_WHY}\nEOF\n)\""
+        self.assertEqual(self.verdict(cmd), "deny")
+
+    def test_title_heredoc_does_not_trigger_structure_deny(self):
+        """제목은 본문보다 짧다. 가장 긴 본문 하나만 구조를 본다."""
+        cmd = ("gh issue create --title \"$(cat <<'A')\" --body \"$(cat <<'B')\"\n"
+               "짧은 제목\nA\n" + SHORT + "\nB")
+        self.assertEqual(self.verdict(cmd), "allow")
+
+
+class DenyReasonRoutesUnresolvedIntoTheBody(GuardCase):
+    """길이 안내가 미결을 이슈 밖으로 내보내면 합의 지점이 본문에서 사라진다."""
+
+    def test_reason_does_not_send_unresolved_to_adr(self):
+        out = self.run_hook(f"gh issue create -F {self.long_file}")
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("미결과 결정", reason)
+        self.assertIn("착수 전 합의할 것", reason)
 
 
 class UnrequestedCreateWarning(GuardCase):
