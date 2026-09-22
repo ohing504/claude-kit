@@ -15,20 +15,38 @@ import unittest
 
 HOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "issue-guard.sh")
 
-LONG = "가" * 1300   # 상한 1,200자 초과
-SHORT = "가" * 100
+WHY = "## 왜\n이유\n\n"
+PARLEY = "## 착수 전 합의할 것\n- 무엇을 정할지\n\n"
+
+
+def body(total, *blocks):
+    """블록을 앞에 두고 전체가 정확히 total자가 되게 채운다."""
+    head = "".join(blocks)
+    return head + "가" * (total - len(head))
+
+
+LONG = body(1700, WHY)                  # 기본 상한 1,600자 초과
+SHORT = body(300, WHY)
+MID = body(1500, WHY)                   # 옛 상한 초과, 새 상한 이하
+PARLEYED = body(1850, WHY, PARLEY)      # `## 착수 전 합의할 것`이 있어 1,900자까지 허용
+UNPARLEYED = body(1850, WHY)            # 같은 길이인데 그 블록이 없다
+NO_WHY = "가" * 300                     # `## 왜`가 없다
 
 
 class GuardCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.long_file = os.path.join(cls.tmp.name, "long.md")
-        cls.short_file = os.path.join(cls.tmp.name, "short.md")
-        with open(cls.long_file, "w", encoding="utf-8") as f:
-            f.write(LONG)
-        with open(cls.short_file, "w", encoding="utf-8") as f:
-            f.write(SHORT)
+        cls.files = {}
+        for name, text in (("long", LONG), ("short", SHORT), ("mid", MID),
+                           ("parleyed", PARLEYED), ("unparleyed", UNPARLEYED),
+                           ("no_why", NO_WHY)):
+            path = os.path.join(cls.tmp.name, f"{name}.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            cls.files[name] = path
+        cls.long_file = cls.files["long"]
+        cls.short_file = cls.files["short"]
 
     @classmethod
     def tearDownClass(cls):
@@ -93,6 +111,21 @@ class MentionIsNotInvocation(GuardCase):
         self.assertEqual(self.verdict("git commit -m 'fix: gh api 우회 경로 차단'"),
                          "allow")
 
+    def test_body_containing_eof_does_not_close_the_heredoc(self):
+        """닫는 태그는 여는 줄에서 읽는다. 아무 `EOF`로 닫으면 본문 뒤쪽이
+        실행부로 새어 나와 언급이 호출로 읽힌다."""
+        cmd = ("git commit -m \"$(cat <<'MSGEOF'\n"
+               "fix: heredoc 처리\n"
+               "EOF\n"
+               f"gh issue create -F {self.long_file}\n"
+               "MSGEOF\n)\"")
+        self.assertEqual(self.verdict(cmd), "allow")
+
+    def test_mention_does_not_warn(self):
+        """언급을 호출로 읽으면 grep 한 번에 이슈 요청 경고가 뜬다."""
+        t = self.write_transcript("이 함수 리팩터링해줘")
+        self.assertIsNone(self.system_message("grep -rn 'gh issue create' plugins/", t))
+
 
 class BodyLengthOverLimit(GuardCase):
     """본문이 상한을 넘으면 차단한다. 본문 전달 형태를 모두 덮는다."""
@@ -129,6 +162,11 @@ class BodyLengthOverLimit(GuardCase):
             self.verdict(f"gh issue create -b '{SHORT}' && gh issue create -b '{LONG}'"),
             "deny")
 
+    def test_command_substitution_invocation(self):
+        """`URL=$(gh issue create ...)` 형태로도 실제 실행된다."""
+        self.assertEqual(
+            self.verdict(f"URL=$(gh issue create -F {self.long_file})"), "deny")
+
     def test_env_prefixed_invocation(self):
         self.assertEqual(
             self.verdict(f"env GH_TOKEN=x gh issue create --body-file {self.long_file}"),
@@ -140,11 +178,76 @@ class BodyLengthOverLimit(GuardCase):
                "짧은 제목\nA\n" + LONG + "\nB")
         self.assertEqual(self.verdict(cmd), "deny")
 
+    def test_indented_heredoc_closes_so_the_next_call_is_judged(self):
+        """`<<-`는 닫는 태그 앞의 탭을 무시한다. 탭을 안 벗기면 본문이 닫히지
+        않아 뒤따르는 호출이 전부 본문으로 먹힌다."""
+        cmd = ("cat <<-'EOF' > /dev/null\n"
+               "\t메모\n"
+               "\tEOF\n"
+               f"gh issue create -F {self.long_file}")
+        self.assertEqual(self.verdict(cmd), "deny")
+
     def test_here_string_does_not_swallow_next_line(self):
         """`<<<`는 heredoc이 아니다. 여는 줄로 오인하면 다음 줄의 호출이 판정에서 빠진다."""
         self.assertEqual(
             self.verdict(f"grep foo <<<bar\ngh issue create --body-file {self.long_file}"),
             "deny")
+
+
+class LimitDependsOnParleyBlock(GuardCase):
+    """`## 착수 전 합의할 것`이 있는 이슈는 상한이 더 높다."""
+
+    def test_mid_length_passes_new_limit(self):
+        """옛 상한 1,200자에는 실측상 대부분이 걸렸다 — 열린 이슈 30건의 최대가 1,199자."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['mid']}"), "allow")
+
+    def test_parley_block_raises_limit(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['parleyed']}"), "allow")
+
+    def test_same_length_without_parley_block_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['unparleyed']}"), "deny")
+
+    def test_parley_block_does_not_lift_the_upper_limit(self):
+        over = PARLEY + "가" * 2000
+        self.assertEqual(self.verdict(f"gh issue create -b '{WHY}{over}'"), "deny")
+
+    def test_deny_reason_keeps_unresolved_in_the_body(self):
+        """안내가 미결을 ADR로 보내면 합의할 것이 본문에서 사라진다."""
+        out = self.run_hook(f"gh issue create -F {self.long_file}")
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("미결과 결정", reason)
+        self.assertIn("착수 전 합의할 것", reason)
+
+
+class WhyBlockIsRequired(GuardCase):
+    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과해 착수 세션이 손해를 재지 못한다."""
+
+    def test_create_without_why_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['no_why']}"), "deny")
+
+    def test_edit_without_why_warns_only(self):
+        """옛 규격으로 열린 이슈를 고치는 경로다. 막으면 정리 자체를 못 한다."""
+        cmd = f"gh issue edit 12 -F {self.files['no_why']}"
+        self.assertEqual(self.verdict(cmd), "allow")
+        self.assertIn("## 왜", self.system_message(cmd) or "")
+
+    def test_inline_body_without_why_is_denied(self):
+        """본문 파일 경로만 검사하면 인라인으로 우회된다."""
+        self.assertEqual(self.verdict(f"gh issue create -b '{NO_WHY}'"), "deny")
+
+    def test_heredoc_body_without_why_is_denied(self):
+        cmd = f"gh issue create --body \"$(cat <<'EOF'\n{NO_WHY}\nEOF\n)\""
+        self.assertEqual(self.verdict(cmd), "deny")
+
+    def test_title_does_not_trigger_why_block_deny(self):
+        """제목은 본문보다 짧다. 가장 긴 본문 하나만 구조를 본다."""
+        cmd = ("gh issue create --title \"$(cat <<'A')\" --body \"$(cat <<'B')\"\n"
+               "짧은 제목\nA\n" + SHORT + "\nB")
+        self.assertEqual(self.verdict(cmd), "allow")
 
 
 class UnmeasurablePaths(GuardCase):
@@ -216,10 +319,11 @@ class BodyFilePathResolution(GuardCase):
         self.assertIsNone(self.system_message(cmd, cwd=self.tmp.name))
 
     def test_unrelated_F_flag_is_not_a_body_file(self):
-        """`curl -F`는 본문 파일이 아니다. gh 호출 구간 밖의 플래그는 읽지 않는다."""
+        """`git commit -F`는 이슈 본문이 아니다. gh 호출 구간 밖의 플래그를 읽으면
+        그 파일 길이로 이슈 생성이 막힌다."""
         self.assertEqual(
             self.verdict(f"gh issue create -F {self.short_file} && "
-                         f"curl -F file=@{self.long_file} https://example.com"),
+                         f"git commit -F {self.long_file}"),
             "allow")
 
 
@@ -277,53 +381,6 @@ class UnrequestedCreateWarning(GuardCase):
         """edit은 기존 이슈 정리라 요청 발화가 없는 게 정상이다."""
         t = self.write_transcript("이 함수 리팩터링해줘")
         self.assertIsNone(self.system_message(f"gh issue edit 12 -F {self.short_file}", t))
-
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-import issue_guard  # noqa: E402
-
-
-class SplitHeredocs(unittest.TestCase):
-    """판정의 전제. 여기가 어긋나면 위 판정이 전부 어긋난다."""
-
-    def test_body_is_removed_from_executed_part(self):
-        cmd = "cat <<'EOF'\n본문\nEOF\necho done"
-        cmd_exec, heredocs = issue_guard.split_heredocs(cmd)
-        self.assertEqual(cmd_exec, "cat <<'EOF'\necho done")
-        self.assertEqual(heredocs, [("cat <<'EOF'", "본문")])
-
-    def test_closing_tag_is_read_from_opening_line(self):
-        """EOF 외 라벨도 그 라벨로 닫는다."""
-        _, heredocs = issue_guard.split_heredocs("cat <<MSGEOF\nEOF\n본문\nMSGEOF")
-        self.assertEqual(heredocs, [("cat <<MSGEOF", "EOF\n본문")])
-
-    def test_indented_form(self):
-        _, heredocs = issue_guard.split_heredocs("cat <<-'EOF'\n\t본문\n\tEOF")
-        self.assertEqual(heredocs, [("cat <<-'EOF'", "\t본문")])
-
-    def test_multiple_heredocs(self):
-        cmd = "cat <<'A'\n하나\nA\ncat <<'B'\n둘\nB"
-        _, heredocs = issue_guard.split_heredocs(cmd)
-        self.assertEqual([b for _, b in heredocs], ["하나", "둘"])
-
-
-class DetectActions(unittest.TestCase):
-    def test_command_positions(self):
-        for cmd in ("gh issue create -F x", "ls && gh issue create -F x",
-                    "ls; gh issue create -F x", "$(gh issue create -F x)",
-                    "ls | gh issue create -F x", "ls\ngh issue create -F x",
-                    "env GH_TOKEN=x gh issue create -F x"):
-            self.assertEqual(issue_guard.detect_actions(cmd), {"create"}, cmd)
-
-    def test_collects_every_invocation(self):
-        self.assertEqual(
-            issue_guard.detect_actions("gh issue create -F x && gh api repos/o/r/issues"),
-            {"create", "api"})
-
-    def test_mentions_are_not_invocations(self):
-        for cmd in ("echo 'gh issue create'", "- gh issue create 를 막는다",
-                    "git commit -m 'fix gh api 우회'"):
-            self.assertEqual(issue_guard.detect_actions(cmd), set(), cmd)
 
 
 if __name__ == "__main__":
