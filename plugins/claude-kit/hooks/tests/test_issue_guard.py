@@ -25,12 +25,12 @@ def body(total, *blocks):
     return head + "가" * (total - len(head))
 
 
-LONG = body(1700, WHY)      # 기본 상한 1,600자 초과
+LONG = body(1700, WHY)                  # 기본 상한 1,600자 초과
 SHORT = body(300, WHY)
 MID = body(1500, WHY)                   # 옛 상한 초과, 새 상한 이하
-PARLEYED = body(1850, WHY, PARLEY)      # 합의 블록이 있어 1,900자까지 허용
-UNPARLEYED = body(1850, WHY)            # 같은 길이인데 합의 블록이 없다
-NO_WHY = "가" * 300                     # 구조 위반
+PARLEYED = body(1850, WHY, PARLEY)      # `## 착수 전 합의할 것`이 있어 1,900자까지 허용
+UNPARLEYED = body(1850, WHY)            # 같은 길이인데 그 블록이 없다
+NO_WHY = "가" * 300                     # `## 왜`가 없다
 
 
 class GuardCase(unittest.TestCase):
@@ -280,10 +280,10 @@ class AllowedInvocations(GuardCase):
 
 
 class LimitDependsOnParleyBlock(GuardCase):
-    """상한은 하나가 아니다 — 착수 전 합의할 것을 담은 이슈는 더 길어도 된다."""
+    """`## 착수 전 합의할 것`이 있는 이슈는 상한이 더 높다."""
 
     def test_mid_length_passes_new_limit(self):
-        """옛 상한 1,200자는 실측상 binding이었다 — 열린 이슈 30건의 최대가 1,199자."""
+        """옛 상한 1,200자에는 실측상 대부분이 걸렸다 — 열린 이슈 30건의 최대가 1,199자."""
         self.assertEqual(
             self.verdict(f"gh issue create -F {self.files['mid']}"), "allow")
 
@@ -301,7 +301,7 @@ class LimitDependsOnParleyBlock(GuardCase):
 
 
 class WhyBlockIsRequired(GuardCase):
-    """`## 왜`가 없으면 제목을 되풀이한 본문이 통과한다 — 착수 세션이 손해를 못 잰다."""
+    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과해 착수 세션이 손해를 재지 못한다."""
 
     def test_create_without_why_is_denied(self):
         self.assertEqual(
@@ -329,7 +329,7 @@ class WhyBlockIsRequired(GuardCase):
 
 
 class DenyReasonRoutesUnresolvedIntoTheBody(GuardCase):
-    """길이 안내가 미결을 이슈 밖으로 내보내면 합의 지점이 본문에서 사라진다."""
+    """길이 초과 안내가 미결을 ADR로 보내면 합의할 것이 본문에서 사라진다."""
 
     def test_reason_does_not_send_unresolved_to_adr(self):
         out = self.run_hook(f"gh issue create -F {self.long_file}")
