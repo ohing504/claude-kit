@@ -108,17 +108,16 @@ def check_length(body):
     if not body or len(body) <= limit:
         return
     raise Deny(
-        f"이슈 본문이 {len(body)}자로 상한 {limit}자를 넘습니다. 본문이 길수록 "
-        "코드와 어긋나는 문장이 늘고 머지율이 떨어집니다(길이를 줄이면 단위당 +9%).\n"
+        f"이슈 본문이 {len(body)}자로 상한 {limit}자를 넘습니다.\n"
         "\n"
-        "넘친 내용은 대개 아래 중 하나입니다 — 옮겨 적을 곳을 함께 적었습니다.\n"
-        "  시점 실측(N줄, N토큰, permalink) → 재실행 명령(`wc -l <path>`)으로 대체\n"
+        "넘친 내용은 대개 아래입니다 — 옮겨 적을 곳을 함께 적었습니다.\n"
+        "  시점 실측(N줄, N토큰, permalink) → 재실행 명령(`wc -l <path>`)\n"
         "  확정된 결정과 그 근거            → ADR. 이슈는 그 경로만 가리킵니다\n"
         "  환경과 아키텍처 배경             → CLAUDE.md 또는 AGENTS.md\n"
         "  진행 상황                       → 적지 않음. 상태는 라벨에서 읽습니다\n"
         "\n"
-        f"아직 안 정한 것은 빼지 말고 `{PARLEY_HEADING}` 블록에 남기세요 — "
-        f"그 블록이 있는 이슈는 상한이 {PARLEY_LIMIT}자입니다.\n"
+        f"아직 안 정한 것은 빼지 말고 `{PARLEY_HEADING}`에 남기세요 — "
+        f"그 블록이 있으면 상한이 {PARLEY_LIMIT}자입니다.\n"
         "\n" + SKILL_REF)
 
 
@@ -131,12 +130,9 @@ def check_why_block(body, actions, warnings):
     if not body or WHY_HEADING in body:
         return
     message = (
-        f"이슈 본문에 `{WHY_HEADING}` 블록이 없습니다. 무엇이 안 되는지는 제목이 "
-        "이미 갖고 있어, 그것만 되풀이한 본문으로는 착수 세션이 손해를 재지 "
-        "못합니다.\n"
-        "\n"
-        f"`{WHY_HEADING}`에는 무엇이 안 되고(현상), 왜 그렇고(원인), 그래서 무엇이 "
-        "막히는지(손해)를 씁니다.\n"
+        f"이슈 본문에 `{WHY_HEADING}` 블록이 없습니다. 무엇이 안 되고(현상), 왜 "
+        "그렇고(원인), 그래서 무엇이 막히는지(손해)를 씁니다 — 제목이 이미 가진 "
+        "것만 되풀이하면 착수 세션이 손해를 재지 못합니다.\n"
         "\n" + SKILL_REF)
     if "create" in actions:
         raise Deny(message)
@@ -169,7 +165,9 @@ def collect_bodies(cmd_exec, heredocs, cwd, warnings):
     읽지 못한 본문은 warnings에 남긴다. 단 읽을 방법이 아예 없는 경로는 Deny다.
     """
     # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
-    body_files = [m.group(1).strip("\"'")
+    # `URL=$(gh issue create -F body.md)` 형태에서는 캡처 끝에 명령 치환을 닫는
+    # `)`가 붙는다. 벗기지 않으면 파일을 못 열어 길이를 재지 못한다.
+    body_files = [m.group(1).strip("\"'").rstrip(")")
                   for segment in segments(cmd_exec, GH_INVOCATION)
                   for m in BODY_FILE_FLAG.finditer(segment)]
     env = shell_assignments(cmd_exec)
