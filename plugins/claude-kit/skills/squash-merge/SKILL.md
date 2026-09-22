@@ -1,6 +1,6 @@
 ---
 name: squash-merge
-description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단)·방금 머지한 PR 브랜치만 로컬 정리·base 동기화까지 한 흐름. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인(`--auto` 인자로만 생략).
+description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단), 방금 머지한 PR 브랜치만 로컬 정리, base 동기화까지 한 흐름. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인(`--auto` 인자로만 생략).
 argument-hint: "[--auto] [<pr#>|<branch>|<url>]"
 allowed-tools: Bash(gh:*), Bash(git:*)
 ---
@@ -23,11 +23,11 @@ PR squash merge → 메시지 정리 → 로컬 정리 한 흐름으로 실행.
 
 ### Step 1. PR 식별 + 분석
 
-타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
+타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state,author`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
 
 PR 정보 + 변경 사항:
 
-- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus`
+- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
 - `gh pr diff <NUM>` (full net diff)
 
 `baseRefName`은 Step 6 동기화에 재사용하므로 기억해 둔다.
@@ -36,9 +36,9 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 
 **머지 가능 사전 점검**:
 
-- `mergeable == CONFLICTING` 또는 `mergeStateStatus ∈ {DIRTY, BLOCKED, DRAFT, BEHIND}` → 멈추고 사유 보고, 강제 진행 X (충돌·필수 체크 미통과·base 뒤처짐·초안).
+- `mergeable == CONFLICTING` 또는 `mergeStateStatus ∈ {DIRTY, BLOCKED, DRAFT, BEHIND}` → 멈추고 사유 보고, 강제 진행 X (충돌, 필수 체크 미통과, base 뒤처짐, 초안).
 - `UNKNOWN` → 잠시 후 재조회.
-- `UNSTABLE`(일부 체크 실패·진행 중이나 머지 가능) → 경고 후 판단 요청.
+- `UNSTABLE`(일부 체크 실패, 진행 중이나 머지 가능) → 경고 후 판단 요청.
 
 ### Step 2. squash 메시지 작성 — net diff 사실 기반
 
@@ -46,11 +46,28 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 
 **차단 (session-context bleed)**:
 
-- PR 내 자체 발견 버그·수정 commit
-- 되돌린 작업 (revert·restore)
-- 중간 refactor·rename 후 재변경 흔적
+- PR 내 자체 발견 버그와 그 수정 commit
+- 되돌린 작업 (revert, restore)
+- 중간 refactor, rename 후 재변경 흔적
 - 개별 commit message 인용 (이슈 참조 줄은 예외, 아래 수집 규칙)
-- 세션 발화·블로커·디버깅 과정·키 디시전 번호(D-NN) 인용
+- 세션 발화, 블로커, 디버깅 과정, 키 디시전 번호(D-NN) 인용
+
+**봇 의존성 PR은 body를 비운다 (net diff 기반 작성의 예외)**
+
+**조건 둘을 모두 만족할 때만**:
+
+1. PR `author.is_bot`이 `true`(dependabot, renovate 등 — `gh pr view --json author`가 `login` 외에 `is_bot` 불리언을 함께 반환하므로 `login` 문자열 패턴 매칭보다 이걸 우선한다)
+2. net diff가 의존성 버전 선언 파일의 버전 문자열 변경뿐 (`pubspec.yaml`/`.lock`, `package.json`/lockfile, `.github/workflows/*.yml`의 `uses:` 핀, `build.gradle*`, `Gemfile`/`.lock`, `go.mod`/`go.sum`, `requirements*.txt`, `Cargo.toml`/`.lock`)
+
+**근거**: 봇 PR 본문은 업스트림 릴리즈 노트 전문(`<details>` HTML 포함 수백 줄)이다. 그 내용은 PR에 영구 보존되고 커밋 제목의 `(#N)`이 이미 그 링크이므로, 커밋 body에 복사하면 중복인 채로 `git log`, `git show` 출력만 밀어낸다. 릴리즈 노트에 섞인 `BREAKING CHANGE` 문구가 release-please 등 커밋 body를 읽는 도구의 major bump 오탐을 내는 위험도 같이 제거된다.
+
+**net diff에 소스 변경이 섞이면(조건 2 미충족) 일반 규칙으로 돌아간다.** 봇이 연 PR이라도 사람이 commit을 얹어 생성 코드 재생성, 호출부 수정, 마이그레이션이 섞였으면 그 변경은 PR 어디에도 설명이 없다 — 왜 그 수정이 함께 필요했는지를 body에 남긴다.
+
+이 두 조건을 만족하면:
+
+- **subject**: PR 제목 그대로. **body**: 빈 문자열 (Step 4에서 `--body ""`).
+- **이슈 참조 수집을 통째로 건너뛴다.** 봇 PR 본문의 릴리즈 노트에는 업스트림 저장소의 `#N`과 `owner/repo#N`이 수십 개 들어 있다. 우리 저장소 이슈가 아니므로 참조 줄로 만들지 않고, "매칭 안 된 `#N`" 보고도 하지 않는다 (전량이 미매칭이라 보고가 노이즈가 된다).
+- **`Signed-off-by: dependabot[bot]` 트레일러도 넣지 않는다.** squash 커밋의 author는 머지한 사람이다.
 
 **형식**:
 
@@ -69,7 +86,7 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - **매칭 안 된 `#N` 언급을 보고한다.** 세 출처에서 `#\d+`를 걷어, 참조 줄이 되지 못한 번호가 남으면 Step 3 출력에 한 줄 남긴다.
   - 출력 문구: `#N 언급이 <걸린 출처>에 있으나 닫기 키워드 없음 — 이슈면 말미 Closes #N 규격(commit 스킬) 위반, PR 번호 언급이면 무시`
   - `<걸린 출처>`는 그 번호가 실제로 나온 곳(PR 본문 / PR 제목 / commit message). PR 본문으로 고정해 적지 않는다.
-  - 수집에서 빼는 둘: 코드블록·인용 블록 안의 번호(과거 사례·예시를 옮겨 적은 것), 바로 위 규칙으로 뺀 번호.
+  - 수집에서 빼는 둘: 코드블록, 인용 블록 안의 번호(과거 사례, 예시를 옮겨 적은 것), 바로 위 규칙으로 뺀 번호.
   - `--auto`에서도 출력 — 참조 줄이 통째로 빠진 것은 body만 봐서는 눈에 띄지 않는다.
   - 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 영문 `Closes #N`.
 
@@ -83,15 +100,18 @@ Closes #14
 Refs #9
 ```
 
-### Step 3. 실행 전 확인 게이트 (자동 발화·명시 호출 공통)
+### Step 3. 실행 전 확인 게이트 (자동 발화, 명시 호출 공통)
 
-**흐름: ① PR(번호·제목) + squash subject/body를 응답 본문에 코드블록으로 출력 → ② confirm.** 확인 없이 merge X (destructive·복구 곤란).
+**흐름**: 확인 없이 merge X (destructive, 복구 곤란).
 
-- **subject/body는 응답 본문 텍스트로 출력한다.** AskUserQuestion `preview`는 터미널 전용이라 데스크탑·모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
-- confirm 수단은 자유(AskUserQuestion·평문). 본문에 내용이 있으면 매체와 무관하게 표시된다.
+1. PR(번호, 제목) + squash subject/body를 응답 본문에 코드블록으로 출력
+2. confirm
+
+- **subject/body는 응답 본문 텍스트로 출력한다.** AskUserQuestion `preview`는 터미널 전용이라 데스크탑, 모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
+- confirm 수단은 자유(AskUserQuestion/평문). 본문에 내용이 있으면 매체와 무관하게 표시된다.
 - "머지하자" 류 자연어 진입도 raw git/gh 직접 처리 X — 본 흐름(Step 2 포함) 경유.
 
-**`--auto` 지정 시**: ②의 confirm만 생략하고 Step 4로 직행. ①(PR 정보 + subject/body 출력)은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. Step 1의 머지 가능 사전 점검은 `--auto`에서도 동일 적용 — 충돌, 필수 체크 미통과, 초안, base 뒤처짐은 사용자 확인이 아니라 머지 안전성 문제라 옵션으로 우회하지 않는다.
+**`--auto` 지정 시**: 2번(confirm)만 생략하고 Step 4로 직행. 1번(PR 정보 + subject/body 출력)은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. Step 1의 머지 가능 사전 점검은 `--auto`에서도 동일 적용 — 충돌, 필수 체크 미통과, 초안, base 뒤처짐은 사용자 확인이 아니라 머지 안전성 문제라 옵션으로 우회하지 않는다.
 
 ### Step 4. squash merge 실행
 
@@ -107,12 +127,13 @@ git push origin --delete "<PR headRefName>" \
 ```
 
 - GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
+- **봇 의존성 PR(Step 2 예외)은 `--body ""`.** HEREDOC 없이 빈 문자열을 그대로 넘긴다 — `--body`를 생략하면 저장소의 `squash_merge_commit_message` 설정(대개 `PR_BODY`)이 되살아나 릴리즈 노트 전문이 커밋에 들어간다.
 - **`--delete-branch`(`-d`) 사용 금지.** 이 옵션은 원격만이 아니라 로컬까지 정리하는데, 그 과정에서 gh가 현재 워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른 세션의 미커밋 변경이 워크트리에 있으면 그 pull이 실패하고(사용자 `pull.rebase=true`면 rebase 거부 메시지), 체크아웃된 브랜치만 바뀐 채 남는다. 원격 삭제는 위 `git push origin --delete`로, 로컬 정리는 Step 5(worktree-aware)로 분리한다.
 - 원격 head를 여기서 지워야 Step 5의 `[gone]` 감지가 성립한다. `git push origin --delete`는 로컬 remote-tracking ref도 함께 지운다.
 
 ### Step 5. 방금 머지한 PR 브랜치만 로컬 정리 (worktree 처리 포함)
 
-**정리 대상은 오직 이번에 머지한 PR의 head 브랜치 하나** (Step 1의 `headRefName`). 전역 `[gone]` 스윕 금지 — 무관한 브랜치·다른 동시 세션의 활성 worktree까지 `--force`로 날려 미커밋 작업을 파괴하기 때문. squash merge가 retire시킨 건 이 브랜치 하나뿐이다.
+**정리 대상은 오직 이번에 머지한 PR의 head 브랜치 하나** (Step 1의 `headRefName`). 전역 `[gone]` 스윕 금지 — 무관한 브랜치, 다른 동시 세션의 활성 worktree까지 `--force`로 날려 미커밋 작업을 파괴하기 때문. squash merge가 retire시킨 건 이 브랜치 하나뿐이다.
 
 ```bash
 git fetch -p
@@ -147,7 +168,7 @@ fi
 - **현재 linked worktree 자신은 제거하지 않는다** — worktree 세션은 자기 worktree에 `git worktree lock`을 걸고 현재 브랜치가 체크아웃 상태라 `worktree remove`와 `branch -D` 모두 실패. 보존 후, 세션 종료 시 keep/remove 프롬프트에서 정리하도록 안내만(종료 키는 환경마다 달라 특정 키 언급 X).
 - **메인 워크트리는 다르다.** 거기서 PR 브랜치를 체크아웃한 채 머지하면 `git worktree list`가 메인 워크트리를 그 브랜치 소유로 보여주지만, 이건 정리를 건너뛸 이유가 아니다 — base로 checkout하면 브랜치를 지울 수 있다. 워크트리 자체는 그대로 둔다.
 - **경로에 공백이 있어도 잘리지 않게 `--porcelain`으로 읽는다.** 사람이 읽는 `git worktree list` 출력은 경로와 커밋과 브랜치를 공백으로 잇기 때문에 `awk '{print $1}'`이 `/Users/me/My Documents/repo`를 `/Users/me/My`에서 자른다. 그러면 메인 워크트리인데도 linked worktree로 오판해 로컬 정리를 통째로 건너뛴다.
-- **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단·별도 도구 몫.
+- **다른 `[gone]` 브랜치는 건드리지 않는다** — 책임은 방금 머지한 PR 브랜치까지. 누적 `[gone]` 정리는 별도 사용자 판단, 별도 도구 몫.
 
 ### Step 6. base 브랜치 로컬 동기화
 
@@ -184,4 +205,4 @@ fi
 
 Step 1-2는 분석 단계. **Step 3 확인 후** Step 4→5→6을 **순차** 실행 — 머지로 원격 브랜치가 삭제돼야 `git fetch -p`가 `[gone]`을 감지하므로, 이 세 단계는 데이터 의존이 있어 병렬 묶음 X.
 
-**git·gh 외 도구 금지** (Read/Edit/Write/TaskCreate 등 X). 마지막에 merge PR URL + 정리한 PR 브랜치(또는 보존 사유) 출력.
+**git, gh 외 도구 금지** (Read/Edit/Write/TaskCreate 등 X). 마지막에 merge PR URL + 정리한 PR 브랜치(또는 보존 사유) 출력.
