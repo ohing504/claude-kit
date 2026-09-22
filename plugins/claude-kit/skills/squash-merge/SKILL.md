@@ -23,11 +23,11 @@ PR squash merge → 메시지 정리 → 로컬 정리 한 흐름으로 실행.
 
 ### Step 1. PR 식별 + 분석
 
-타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
+타겟 인자 없으면 `gh pr view --json number,headRefName,baseRefName,title,body,state,author`로 현재 branch 연결 PR auto detect. detect 실패 시 사용자에게 PR 번호 요청 후 종료(`--auto`여도 추측으로 진행 X).
 
 PR 정보 + 변경 사항:
 
-- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus`
+- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
 - `gh pr diff <NUM>` (full net diff)
 
 `baseRefName`은 Step 6 동기화에 재사용하므로 기억해 둔다.
@@ -51,6 +51,23 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5(로컬 정�
 - 중간 refactor·rename 후 재변경 흔적
 - 개별 commit message 인용 (이슈 참조 줄은 예외, 아래 수집 규칙)
 - 세션 발화·블로커·디버깅 과정·키 디시전 번호(D-NN) 인용
+
+**봇 의존성 PR은 body를 비운다 (net diff 기반 작성의 예외)**
+
+**조건 둘을 모두 만족할 때만**:
+
+1. PR `author.is_bot`이 `true`(dependabot, renovate 등 — `gh pr view --json author`가 `login` 외에 `is_bot` 불리언을 함께 반환하므로 `login` 문자열 패턴 매칭보다 이걸 우선한다)
+2. net diff가 의존성 버전 선언 파일의 버전 문자열 변경뿐 (`pubspec.yaml`/`.lock`, `package.json`/lockfile, `.github/workflows/*.yml`의 `uses:` 핀, `build.gradle*`, `Gemfile`/`.lock`, `go.mod`/`go.sum`, `requirements*.txt`, `Cargo.toml`/`.lock`)
+
+**근거**: 봇 PR 본문은 업스트림 릴리즈 노트 전문(`<details>` HTML 포함 수백 줄)이다. 그 내용은 PR에 영구 보존되고 커밋 제목의 `(#N)`이 이미 그 링크이므로, 커밋 body에 복사하면 중복인 채로 `git log`·`git show` 출력만 밀어낸다. 릴리즈 노트에 섞인 `BREAKING CHANGE` 문구가 release-please 등 커밋 body를 읽는 도구의 major bump 오탐을 내는 위험도 같이 제거된다.
+
+**net diff에 소스 변경이 섞이면(조건 2 미충족) 일반 규칙으로 돌아간다.** 봇이 연 PR이라도 사람이 commit을 얹어 생성 코드 재생성, 호출부 수정, 마이그레이션이 섞였으면 그 변경은 PR 어디에도 설명이 없다 — 왜 그 수정이 함께 필요했는지를 body에 남긴다.
+
+이 두 조건을 만족하면:
+
+- **subject**: PR 제목 그대로. **body**: 빈 문자열 (Step 4에서 `--body ""`).
+- **이슈 참조 수집을 통째로 건너뛴다.** 봇 PR 본문의 릴리즈 노트에는 업스트림 저장소의 `#N`과 `owner/repo#N`이 수십 개 들어 있다. 우리 저장소 이슈가 아니므로 참조 줄로 만들지 않고, "매칭 안 된 `#N`" 보고도 하지 않는다 (전량이 미매칭이라 보고가 노이즈가 된다).
+- **`Signed-off-by: dependabot[bot]` 트레일러도 넣지 않는다.** squash 커밋의 author는 머지한 사람이다.
 
 **형식**:
 
@@ -107,6 +124,7 @@ git push origin --delete "<PR headRefName>" \
 ```
 
 - GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
+- **봇 의존성 PR(Step 2 예외)은 `--body ""`.** HEREDOC 없이 빈 문자열을 그대로 넘긴다 — `--body`를 생략하면 저장소의 `squash_merge_commit_message` 설정(대개 `PR_BODY`)이 되살아나 릴리즈 노트 전문이 커밋에 들어간다.
 - **`--delete-branch`(`-d`) 사용 금지.** 이 옵션은 원격만이 아니라 로컬까지 정리하는데, 그 과정에서 gh가 현재 워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른 세션의 미커밋 변경이 워크트리에 있으면 그 pull이 실패하고(사용자 `pull.rebase=true`면 rebase 거부 메시지), 체크아웃된 브랜치만 바뀐 채 남는다. 원격 삭제는 위 `git push origin --delete`로, 로컬 정리는 Step 5(worktree-aware)로 분리한다.
 - 원격 head를 여기서 지워야 Step 5의 `[gone]` 감지가 성립한다. `git push origin --delete`는 로컬 remote-tracking ref도 함께 지운다.
 
