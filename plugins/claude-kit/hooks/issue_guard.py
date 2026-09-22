@@ -122,11 +122,7 @@ def check_length(body):
 
 
 def check_why_block(body, actions, warnings):
-    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과한다.
-
-    create는 막고 edit은 경고만 한다 — edit은 옛 규격으로 열린 이슈를 고치는
-    경로라, 막으면 정리 자체를 못 한다.
-    """
+    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과한다."""
     if not body or WHY_HEADING in body:
         return
     message = (
@@ -158,9 +154,7 @@ def check_api_bypass(cmd_exec):
 def collect_bodies(cmd_exec, heredocs, cwd, warnings):
     """명령이 이슈 본문으로 넘기는 문자열을 전부 모은다.
 
-    한 명령에 여러 호출이 섞일 수 있어(`&&` 체인) 하나만 모으면 나머지가 검사를
-    통과한다. 제목도 같은 플래그 형태로 넘어와 섞이는데, 걸러내지 않고 그대로 모은다
-    — 부르는 쪽이 길이는 전부 재고 블록 구성은 가장 긴 것만 본다.
+    제목도 같은 플래그 형태로 넘어와 섞이는데, 걸러내지 않고 그대로 모은다.
 
     읽지 못한 본문은 warnings에 남긴다. 단 읽을 방법이 아예 없는 경로는 Deny다.
     """
