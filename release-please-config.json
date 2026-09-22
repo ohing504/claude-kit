@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "5ccb73b6002dc2095b615a8608afdde67d0098a6",
+  "bump-minor-pre-major": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "claude-kit",
+      "component": "claude-kit",
+      "tag-separator": "--",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "plugins/claude-kit/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}
