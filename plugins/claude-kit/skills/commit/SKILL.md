@@ -1,6 +1,6 @@
 ---
 name: commit
-description: 변경을 commit하고 요청 범위에 따라 push·PR 생성까지 확장. 열린 PR에 commit을 더 push하면 PR 본문도 다시 쓴다. commit message·PR 본문은 git diff·log 사실만 반영(세션 대화·디버깅 과정 차단). "커밋해줘"는 commit만, "커밋하고 PR"·"PR 만들어줘"는 push+PR — push·PR 전 확인, 모호하면 commit만.
+description: 변경을 commit하고 요청 범위에 따라 push와 PR 생성까지 확장. 열린 PR에 commit을 더 push하면 PR 본문도 다시 쓴다. commit message와 PR 본문은 git diff와 git log 사실만 반영(세션 대화와 디버깅 과정 차단). "커밋해줘"는 commit만, "커밋하고 PR", "PR 만들어줘"는 push+PR — push와 PR 전 확인, 모호하면 commit만.
 allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr view:*)
 ---
 
@@ -16,11 +16,9 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 
 ## 범위 판단
 
-발화에서 작업 범위를 정한다 — 모호하면 commit만, push와 PR은 명시 의도일 때만. commit만 한 뒤 push와 PR이 필요해 보이면 "push·PR도 진행할까요?"를 한 줄로 제안한다.
+발화에서 작업 범위를 정한다 — 모호하면 commit만, push와 PR은 명시 의도일 때만. commit만 한 뒤 push와 PR이 필요해 보이면 "push와 PR도 진행할까요?"를 한 줄로 제안한다.
 
-## 무엇을 근거로 쓰나
-
-commit message와 PR 본문에 같게 적용된다.
+## commit message와 PR 본문 (공통)
 
 **사실 출처는 diff다.** commit은 위 `git diff HEAD`, PR은 base 대비 branch 전체(`git log <base>..HEAD`). 단 `git diff HEAD`는 신규(untracked) 파일을 포함하지 않으므로, 위 '신규 파일' 목록에 항목이 있으면 `git diff --no-index /dev/null <file>`로 직접 확인한다.
 
@@ -59,11 +57,11 @@ commit message와 PR 본문에 같게 적용된다.
 ## 왜
 (이슈 링크 한 줄. 없으면 한 문장)
 
-Closes #42
+Closes #12
 ```
 
 테스트와 lint 결과는 적지 않는다. CI가 PR 페이지에 붙이고, 본문에 손으로 적은 것은 아무도 대조하지 않는다.
 
 생성하거나 갱신한 PR의 URL을 마지막에 출력한다.
 
-**git과 gh 외 도구는 쓰지 않는다.** Read, Edit, Write로 파일을 열지 않는다 — 세션 맥락이 메시지에 섞이는 경로다.
+**git과 gh 외 도구는 쓰지 않는다.** Read, Edit, Write로 파일을 열지 않는다.
