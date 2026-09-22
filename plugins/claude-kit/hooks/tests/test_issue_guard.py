@@ -165,6 +165,62 @@ class BodyLengthOverLimit(GuardCase):
             "deny")
 
 
+class LimitDependsOnParleyBlock(GuardCase):
+    """`## 착수 전 합의할 것`이 있는 이슈는 상한이 더 높다."""
+
+    def test_mid_length_passes_new_limit(self):
+        """옛 상한 1,200자에는 실측상 대부분이 걸렸다 — 열린 이슈 30건의 최대가 1,199자."""
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['mid']}"), "allow")
+
+    def test_parley_block_raises_limit(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['parleyed']}"), "allow")
+
+    def test_same_length_without_parley_block_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['unparleyed']}"), "deny")
+
+    def test_parley_block_does_not_lift_the_upper_limit(self):
+        over = PARLEY + "가" * 2000
+        self.assertEqual(self.verdict(f"gh issue create -b '{WHY}{over}'"), "deny")
+
+    def test_deny_reason_keeps_unresolved_in_the_body(self):
+        """안내가 미결을 ADR로 보내면 합의할 것이 본문에서 사라진다."""
+        out = self.run_hook(f"gh issue create -F {self.long_file}")
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("미결과 결정", reason)
+        self.assertIn("착수 전 합의할 것", reason)
+
+
+class WhyBlockIsRequired(GuardCase):
+    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과해 착수 세션이 손해를 재지 못한다."""
+
+    def test_create_without_why_is_denied(self):
+        self.assertEqual(
+            self.verdict(f"gh issue create -F {self.files['no_why']}"), "deny")
+
+    def test_edit_without_why_warns_only(self):
+        """옛 규격으로 열린 이슈를 고치는 경로다. 막으면 정리 자체를 못 한다."""
+        cmd = f"gh issue edit 12 -F {self.files['no_why']}"
+        self.assertEqual(self.verdict(cmd), "allow")
+        self.assertIn("## 왜", self.system_message(cmd) or "")
+
+    def test_inline_body_without_why_is_denied(self):
+        """본문 파일 경로만 검사하면 인라인으로 우회된다."""
+        self.assertEqual(self.verdict(f"gh issue create -b '{NO_WHY}'"), "deny")
+
+    def test_heredoc_body_without_why_is_denied(self):
+        cmd = f"gh issue create --body \"$(cat <<'EOF'\n{NO_WHY}\nEOF\n)\""
+        self.assertEqual(self.verdict(cmd), "deny")
+
+    def test_title_does_not_trigger_why_block_deny(self):
+        """제목은 본문보다 짧다. 가장 긴 본문 하나만 구조를 본다."""
+        cmd = ("gh issue create --title \"$(cat <<'A')\" --body \"$(cat <<'B')\"\n"
+               "짧은 제목\nA\n" + SHORT + "\nB")
+        self.assertEqual(self.verdict(cmd), "allow")
+
+
 class UnmeasurablePaths(GuardCase):
     """길이를 잴 수 없는 전달 경로는 막는다 — 재지 못하면 상한이 없는 것과 같다."""
 
@@ -277,65 +333,6 @@ class AllowedInvocations(GuardCase):
         cmd = (f"cat > notes.md <<'EOF'\n{LONG}\nEOF\n"
                f"gh issue create -F {self.short_file}")
         self.assertEqual(self.verdict(cmd), "allow")
-
-
-class LimitDependsOnParleyBlock(GuardCase):
-    """`## 착수 전 합의할 것`이 있는 이슈는 상한이 더 높다."""
-
-    def test_mid_length_passes_new_limit(self):
-        """옛 상한 1,200자에는 실측상 대부분이 걸렸다 — 열린 이슈 30건의 최대가 1,199자."""
-        self.assertEqual(
-            self.verdict(f"gh issue create -F {self.files['mid']}"), "allow")
-
-    def test_parley_block_raises_limit(self):
-        self.assertEqual(
-            self.verdict(f"gh issue create -F {self.files['parleyed']}"), "allow")
-
-    def test_same_length_without_parley_block_is_denied(self):
-        self.assertEqual(
-            self.verdict(f"gh issue create -F {self.files['unparleyed']}"), "deny")
-
-    def test_parley_block_does_not_lift_the_upper_limit(self):
-        over = PARLEY + "가" * 2000
-        self.assertEqual(self.verdict(f"gh issue create -b '{WHY}{over}'"), "deny")
-
-
-class WhyBlockIsRequired(GuardCase):
-    """`## 왜`가 없으면 제목만 되풀이한 본문이 통과해 착수 세션이 손해를 재지 못한다."""
-
-    def test_create_without_why_is_denied(self):
-        self.assertEqual(
-            self.verdict(f"gh issue create -F {self.files['no_why']}"), "deny")
-
-    def test_edit_without_why_warns_only(self):
-        """옛 규격으로 열린 이슈를 고치는 경로다. 막으면 정리 자체를 못 한다."""
-        cmd = f"gh issue edit 12 -F {self.files['no_why']}"
-        self.assertEqual(self.verdict(cmd), "allow")
-        self.assertIn("## 왜", self.system_message(cmd) or "")
-
-    def test_inline_body_without_why_is_denied(self):
-        """본문 파일 경로만 검사하면 인라인으로 우회된다."""
-        self.assertEqual(self.verdict(f"gh issue create -b '{NO_WHY}'"), "deny")
-
-    def test_heredoc_body_without_why_is_denied(self):
-        cmd = f"gh issue create --body \"$(cat <<'EOF'\n{NO_WHY}\nEOF\n)\""
-        self.assertEqual(self.verdict(cmd), "deny")
-
-    def test_title_heredoc_does_not_trigger_structure_deny(self):
-        """제목은 본문보다 짧다. 가장 긴 본문 하나만 구조를 본다."""
-        cmd = ("gh issue create --title \"$(cat <<'A')\" --body \"$(cat <<'B')\"\n"
-               "짧은 제목\nA\n" + SHORT + "\nB")
-        self.assertEqual(self.verdict(cmd), "allow")
-
-
-class DenyReasonRoutesUnresolvedIntoTheBody(GuardCase):
-    """길이 초과 안내가 미결을 ADR로 보내면 합의할 것이 본문에서 사라진다."""
-
-    def test_reason_does_not_send_unresolved_to_adr(self):
-        out = self.run_hook(f"gh issue create -F {self.long_file}")
-        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        self.assertNotIn("미결과 결정", reason)
-        self.assertIn("착수 전 합의할 것", reason)
 
 
 class UnrequestedCreateWarning(GuardCase):

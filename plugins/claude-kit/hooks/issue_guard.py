@@ -5,13 +5,15 @@
 72%가 사용자 요청 없이 만들어졌고, 사용자가 "이슈 계속 새로 만들지 말라"고 쓴
 바로 그 메시지에서도 생성됐다. 같은 저장소가 만든 이슈의 29%를 나중에 삭제했다.
 
-검사 항목:
-  길이 초과      → deny.  기계 판정이라 오탐이 없다. create와 edit 둘 다 잰다 —
-                          create만 재면 edit --body-file로 상한을 우회한다.
-  `## 왜` 누락   → create는 deny, edit은 경고. edit은 옛 규격으로 열린 이슈를
-                          고치는 경로라, 막으면 정리 자체를 못 한다.
-  사용자 미요청  → 경고.  판정이 부정확해 차단하면 정당한 생성까지 막힌다.
-                          create에만. edit은 기존 이슈 정리라 요청 발화가 없는 게 정상이다.
+judge()가 이 순서로 본다:
+  본문을 못 읽는 경로 → deny.  `gh api`와 `--body-file -`는 본문이 hook을 거치지
+                               않아 아래 둘을 아예 잴 수 없다. 값 대신 경로를 막는다.
+  길이 초과           → deny.  기계 판정이라 오탐이 없다. create와 edit 둘 다 잰다 —
+                               create만 재면 edit --body-file로 상한을 우회한다.
+  `## 왜` 누락        → create는 deny, edit은 경고. edit은 옛 규격으로 열린 이슈를
+                               고치는 경로라, 막으면 정리 자체를 못 한다.
+  사용자 미요청       → 경고.  판정이 부정확해 차단하면 정당한 생성까지 막힌다.
+                               create에만. edit은 기존 이슈 정리라 요청 발화가 없는 게 정상이다.
 
 호출은 issue-guard.sh가 한다. 그쪽은 대상 문자열 유무만 보고 여기로 넘긴다.
 """
@@ -22,20 +24,19 @@ import sys
 
 from gh_command import COMMAND_POSITION, segments, split_heredocs
 
-# 왜/완료 조건/시작 지점/하지 말 것을 쓰면 충분한 상한.
+# 왜/완료 조건/시작 지점/하지 말 것을 쓰면 들어가는 상한.
 # 이슈가 쌓이기만 한 저장소는 본문 중앙값 1,957자, 정상 운영 저장소는 880~1,061자.
-# 옛 상한 1,200자는 실측상 대부분의 본문이 걸렸다 — 한 저장소의 열린 이슈 30건이
+# 옛 상한 1,200자에는 실측상 대부분의 본문이 걸렸다 — 한 저장소의 열린 이슈 30건이
 # 중앙값 858자인데 최대가 1,199자로 상한에 붙어 있었다. 잘려나간 것은 군더더기가
 # 아니라 `## 왜`의 원인과 손해였다.
 BODY_LIMIT = 1600
-# `## 착수 전 합의할 것`이 있는 이슈만 더 쓴다. 선택지를 나열하고 각각의 근거
-# 좌표를 붙이므로 다른 블록보다 길다.
+# 선택지를 나열하고 각각의 근거 좌표를 붙이는 블록이 있으면 그만큼 더 쓴다.
 PARLEY_LIMIT = 1900
 
-# `## 왜`가 없으면 제목만 되풀이한 본문이 통과한다. `## 착수 전 합의할 것`은
-# 아직 안 정한 것을 완료 조건 체크박스에 확정으로 적는 것을 막는다.
-WHY_HEADING = "## 왜"
+# 이 헤딩이 있으면 상한이 PARLEY_LIMIT으로 올라간다.
 PARLEY_HEADING = "## 착수 전 합의할 것"
+# 이 헤딩이 없으면 create를 막는다. 없는 본문은 제목이 이미 가진 것만 되풀이한다.
+WHY_HEADING = "## 왜"
 
 SKILL_REF = "작성 규격은 /git-issue 스킬."
 
@@ -121,7 +122,7 @@ def check_length(body):
         "\n" + SKILL_REF)
 
 
-def check_structure(body, actions, warnings):
+def check_why_block(body, actions, warnings):
     """`## 왜`가 없으면 제목만 되풀이한 본문이 통과한다.
 
     create는 막고 edit은 경고만 한다 — edit은 옛 규격으로 열린 이슈를 고치는
@@ -158,22 +159,25 @@ def check_api_bypass(cmd_exec):
         "\n" + SKILL_REF)
 
 
-def check_bodies(cmd_exec, heredocs, cwd, actions, warnings):
+def collect_bodies(cmd_exec, heredocs, cwd, warnings):
+    """명령이 이슈 본문으로 넘기는 문자열을 전부 모은다.
+
+    한 명령에 여러 호출이 섞일 수 있어(`&&` 체인) 하나만 모으면 나머지가 검사를
+    통과한다. 제목도 같은 플래그 형태로 넘어와 섞이는데, 걸러내지 않고 그대로 모은다
+    — 부르는 쪽이 길이는 전부 재고 블록 구성은 가장 긴 것만 본다.
+
+    읽지 못한 본문은 warnings에 남긴다. 단 읽을 방법이 아예 없는 경로는 Deny다.
+    """
     # --body-file <path> / --body-file=<path> / -F 단축형 모두 받는다.
-    # 한 명령에 여러 번 나오면(`&&` 체인) 전부 잰다 — 마지막 하나만 재면 앞의 것이 통과한다.
     body_files = [m.group(1).strip("\"'")
                   for segment in segments(cmd_exec, GH_INVOCATION)
                   for m in BODY_FILE_FLAG.finditer(segment)]
     env = shell_assignments(cmd_exec)
-    measured = []
-
-    def measure(body):
-        check_length(body)
-        measured.append(body)
+    bodies = []
 
     for raw in body_files:
         if raw == "-":
-            # 표준입력으로 넘긴 본문은 hook이 읽을 수 없어 길이를 잴 방법이 없다.
+            # 표준입력으로 넘긴 본문은 hook이 읽을 수 없어 검사할 방법이 없다.
             raise Deny(
                 "본문을 표준입력(`--body-file -`)으로 넘기면 길이와 블록 구성을 "
                 "검사할 수 없습니다.\n"
@@ -183,30 +187,37 @@ def check_bodies(cmd_exec, heredocs, cwd, actions, warnings):
         path = resolve_path(raw, cwd, env)
         try:
             with open(path, encoding="utf-8") as f:
-                measure(f.read())
+                bodies.append(f.read())
             continue
         except (OSError, TypeError):
             pass
         # hook은 명령 실행 전에 돈다. 같은 명령이 만들 파일은 아직 없는 게 정상이고,
-        # 그 본문은 아래 heredoc 경로로 잰다. 그게 아니면 잴 수 없었다는 사실을 알린다.
+        # 그 본문은 아래 heredoc에서 모은다. 그게 아니면 못 읽었다는 사실을 알린다.
         if not any(raw in opener for opener, _ in heredocs):
             warnings.append(
                 f"본문 파일 `{raw}`를 열지 못해 길이를 검사하지 못했습니다.")
 
-    # 이슈 본문과 무관한 heredoc(다른 파일 작성 등)을 재지 않도록, 여는 줄이 본문
-    # 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 잰다.
+    # 이슈 본문과 무관한 heredoc(다른 파일 작성 등)을 모으지 않도록, 여는 줄이 본문
+    # 플래그거나 위에서 찾은 body-file 경로로 리다이렉트할 때만 모은다.
     for opener, body in heredocs:
         if BODY_HEREDOC_OPENER.search(opener) or any(p in opener for p in body_files):
-            measure(body)
+            bodies.append(body)
 
-    # body-file과 같은 이유로 전부 잰다 — 첫 하나만 재면 체인 뒤쪽 본문이 통과한다.
     for m in INLINE_BODY_FLAG.finditer(cmd_exec):
-        measure(m.group(1) or m.group(2))
+        bodies.append(m.group(1) or m.group(2))
 
-    # 한 명령이 제목과 본문을 함께 넘기면 위 순회에 제목도 섞인다. 제목은 본문보다
-    # 짧으므로 가장 긴 것 하나만 블록 구성을 본다 — 제목에 `## 왜`를 요구하지 않는다.
-    if measured:
-        check_structure(max(measured, key=len), actions, warnings)
+    return bodies
+
+
+def check_bodies(cmd_exec, heredocs, cwd, actions, warnings):
+    bodies = collect_bodies(cmd_exec, heredocs, cwd, warnings)
+    # 전부 잰다 — 첫 하나만 재면 `&&` 체인 뒤쪽 본문이 통과한다.
+    for body in bodies:
+        check_length(body)
+    if bodies:
+        # 제목이 섞여 있어도 본문보다 짧다. 가장 긴 것 하나만 블록 구성을 본다 —
+        # 제목에 `## 왜`를 요구하지 않는다.
+        check_why_block(max(bodies, key=len), actions, warnings)
 
 
 def last_user_message(transcript_path):
