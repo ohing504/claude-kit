@@ -44,6 +44,7 @@ claude plugin install claude-kit@claude-kit
 | 스킬 | 하는 일 |
 |---|---|
 | **deep-verify** | 완료 보고 전 스펙 재대조·자기 반박·증거 수집을 강제("될 것 같다" 차단) |
+| **leave-a-will** | 세션을 끝내거나 다음 세션으로 넘기기 전에 남은 것(변경, 결정, 미룬 논의)을 항목별로 이슈, 메모리, 문서로 옮기고, 진행 중인 작업이 남으면 핸드오프 문서를 작성 |
 | **reflect** | **AI가 쓰는 반성문** — 지침을 어겼을 때 변명 없이 증거로 진단하고 개선안을 목적지로 라우팅(로그로 재발 추적) · [소개](https://htmlpreview.github.io/?https://github.com/ohing504/claude-kit/blob/main/plugins/claude-kit/skills/reflect/reflect-guide.html) |
 
 ### 📥 캡처
