@@ -65,10 +65,9 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Agent, Bash(ls:*), Bash(git:*)
 ## Skip 조건
 
 - 메모리 *콘텐츠 자체* 작성·수정 → 네이티브 메모리가 직접 저장.
-- 세션 인계용 *현재 진행 상황*(in-flight 추론·블로커) → handoff 영역.
+- 세션 인계용 *현재 진행 상황*(in-flight 추론, 블로커) → `leave-a-will` 영역.
 - 프로젝트 *문서*(spec·PRD·ADR 등) 위치·구조 → docs-manager 영역.
 - 외부 참고 자료(레포·research·insights) 배치 → references-manager 영역.
-
 
 ## Edge Cases
 

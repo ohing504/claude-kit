@@ -17,7 +17,8 @@
     "git-issue",
     "squash-merge",
     "apple-notes",
-    "token-usage"
+    "token-usage",
+    "session-handoff"
   ],
   "skills": [
     "./skills"
