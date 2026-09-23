@@ -19,7 +19,7 @@ allowed-tools: Bash(git status:*), Bash(git log:*), Bash(git worktree:*), Bash(g
 - git 상태: !`git status --short --branch 2>/dev/null || echo "(git 저장소 아님)"`
 - push하지 않은 commit: !`git log @{u}..HEAD --oneline 2>/dev/null || echo "(upstream 없음 — 브랜치를 push한 적 없으면 전부 로컬에만 있다)"`
 - worktree: !`git worktree list 2>/dev/null`
-- 현재 브랜치 PR: !`gh pr view --json number,title,state,url,statusCheckRollup --jq '"#\(.number) \(.state) \(.title) \(.url) checks=\([.statusCheckRollup[]?.conclusion] | unique | join(","))"' 2>/dev/null || echo "(현재 브랜치 PR 없음)"`
+- 현재 브랜치 PR: !`gh pr view --json number,title,state,url,statusCheckRollup --jq '"#\(.number) \(.state) \(.title) \(.url) checks=\(if (.statusCheckRollup | length) == 0 then "(check 없음)" else ([.statusCheckRollup[] | if (.conclusion // "") != "" then .conclusion else (.state // .status) end] | unique | join(",")) end)"' 2>/dev/null || echo "(현재 브랜치 PR 없음)"`
 - 세션 기록 파일: !`find ~/.claude/projects -maxdepth 2 -name "${CLAUDE_CODE_SESSION_ID:-none}.jsonl" 2>/dev/null | head -1`
 - compact 횟수: !`f=$(find ~/.claude/projects -maxdepth 2 -name "${CLAUDE_CODE_SESSION_ID:-none}.jsonl" 2>/dev/null | head -1); if [ -n "$f" ]; then grep -c '"compact_boundary"' "$f"; else echo "(기록 파일 없음)"; fi`
 - 인자: `$ARGUMENTS` — `꼼꼼히`가 있으면 2단계의 기록 파일 훑기를 판단 없이 실행한다.
