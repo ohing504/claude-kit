@@ -10,7 +10,7 @@
                          워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른
                          세션의 미커밋 변경이 있으면 그 pull이 실패하고(`pull.rebase=true`
                          환경에서 rebase 거부) 체크아웃된 브랜치만 바뀐 채 남는다.
-                         원격 삭제는 `git push origin --delete`, 로컬 정리는 스킬 Step 5.
+                         원격 삭제와 로컬 정리는 스킬 Step 5의 스크립트.
 
 호출은 squash-merge-guard.sh가 한다. 그쪽은 대상 문자열 유무만 보고 여기로 넘긴다.
 """
@@ -56,8 +56,7 @@ def judge(payload):
                 "`git pull`을 실행합니다 — 다른 세션의 미커밋 변경이 있으면 실패하고 "
                 "체크아웃된 브랜치만 바뀐 채 남습니다.\n"
                 "\n"
-                "원격 head는 머지 뒤 `git push origin --delete <branch>`로 지우고, 로컬 "
-                "브랜치와 worktree 정리는 스킬 Step 5로 하세요.\n"
+                "원격 브랜치 삭제와 로컬 정리는 머지 뒤 스킬 Step 5의 스크립트로 하세요.\n"
                 "\n" + SKILL_REF)
         if not (SUBJECT_FLAG.search(segment) and BODY_FLAG.search(segment)):
             return deny(
