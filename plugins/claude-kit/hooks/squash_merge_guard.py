@@ -10,7 +10,7 @@
                          워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른
                          세션의 미커밋 변경이 있으면 그 pull이 실패하고(`pull.rebase=true`
                          환경에서 rebase 거부) 체크아웃된 브랜치만 바뀐 채 남는다.
-                         원격 삭제와 로컬 정리는 스킬 Step 5.
+                         원격 브랜치 삭제와 로컬 정리는 스킬 Step 5.
 
 호출은 squash-merge-guard.sh가 한다. 그쪽은 대상 문자열 유무만 보고 여기로 넘긴다.
 """

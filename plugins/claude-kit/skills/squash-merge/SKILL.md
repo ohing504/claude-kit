@@ -25,12 +25,12 @@ allowed-tools: Bash(gh:*), Bash(git:*)
 
 PR 정보 + 변경 사항:
 
-- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
+- `gh pr view <NUM> --json number,headRefName,headRefOid,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
 - `gh pr diff <NUM>` (full net diff)
 
-`headRefName`, `baseRefName`은 Step 5에서 쓰므로 기억해 둔다.
+`headRefName`, `headRefOid`, `baseRefName`은 Step 5에서 쓰므로 기억해 둔다.
 
-PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진행.
+PR이 이미 머지됐으면 squash 단계 skip하고 Step 5부터 진행. 머지 없이 닫혔으면 그 사실을 보고하고 종료한다(Step 5는 머지된 PR의 브랜치만 지운다).
 
 **머지 가능 사전 점검**:
 
@@ -38,7 +38,7 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진�
 - `UNKNOWN` → 잠시 후 재조회.
 - `UNSTABLE`(일부 체크 실패, 진행 중이나 머지 가능) → 경고 후 판단 요청.
 
-**미커밋 파일 점검**: linked 워크트리에서 실행 중이면(`git rev-parse --git-dir`와 `--git-common-dir`가 다르면) `git status --short`를 확인한다. 데스크톱 앱은 세션에서 Claude가 연 PR이 머지된 뒤 untracked 파일을 묻지 않고 지울 수 있다. 결과는 Step 3에서 쓴다. 메인 체크아웃의 미커밋 변경은 다른 세션의 것일 수 있어 점검 대상이 아니다.
+**미커밋 파일 점검**: linked 워크트리에서 실행 중이면(`git rev-parse --path-format=absolute --git-dir`와 `--git-common-dir`가 다르면) `git status --short`를 확인한다. 데스크톱 앱은 세션에서 Claude가 연 PR이 머지된 뒤 untracked 파일을 묻지 않고 지울 수 있다. 결과는 Step 3에서 쓴다. 메인 체크아웃의 미커밋 파일은 다른 세션의 것일 수 있어 점검 대상이 아니다.
 
 ### Step 2. squash 메시지 작성 — net diff 사실 기반
 
@@ -56,7 +56,7 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진�
 
 - subject: `type(scope): summary` — recent commits + CLAUDE.md 컨벤션 일치
 - body: 5줄 이내 bullet — net 변경만, HEREDOC
-- 이슈 참조 줄은 body 맨 끝에 별도 블록으로, bullet 5줄 제한에 포함하지 않는다
+- 이슈 참조 줄은 bullet과 빈 줄 하나로 띄운 body 맨 끝 블록으로 적고, bullet 5줄 제한에 포함하지 않는다
 
 **봇 의존성 PR은 body를 비운다 (net diff 기반 작성의 예외)**
 
@@ -82,24 +82,22 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진�
 - **매칭 안 된 `#N` 언급을 보고한다.** 세 출처에서 `#\d+`를 걷어, 참조 줄이 되지 못한 번호가 남으면 Step 3 출력에 한 줄 남긴다.
   - 출력 문구: `#N 언급이 <걸린 출처>에 있으나 닫기 키워드 없음 — 이슈면 말미 Closes #N 규격(commit 스킬) 위반, PR 번호 언급이면 무시`
   - `<걸린 출처>`는 그 번호가 실제로 나온 곳(PR 본문 / PR 제목 / commit message). PR 본문으로 고정해 적지 않는다.
-  - 수집에서 빼는 둘: 코드블록, 인용 블록 안의 번호, 바로 위 규칙으로 뺀 번호.
+  - 걷지 않는 번호: 코드블록 안의 번호, 인용 블록 안의 번호, net diff에서 사라진 작업의 참조로 뺀 번호.
   - `--auto`에서도 출력한다.
   - 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 영문 `Closes #N`.
-
-배치는 bullet과 빈 줄 하나로 띄운 마지막 블록.
 
 ### Step 3. 실행 전 확인 게이트 (자동 발화, 명시 호출 공통)
 
 **흐름**: 확인 없이 merge X (destructive, 복구 곤란).
 
-1. PR(번호, 제목) + squash subject/body를 응답 본문에 코드블록으로 출력. Step 1에서 미커밋 파일이 나왔으면 그 목록과 "머지하면 앱이 지울 수 있습니다"를 함께 출력
+1. PR(번호, 제목) + squash subject/body를 응답 본문에 코드블록으로 출력. Step 1에서 미커밋 파일이 나왔으면 그 목록과 "머지하면 데스크톱 앱이 지울 수 있습니다"를 함께 출력
 2. confirm
 
 - **subject/body는 응답 본문 텍스트로 출력한다.** AskUserQuestion `preview`는 터미널 전용이라 데스크탑, 모바일에선 사라져, 사용자가 내용 없이 승인 버튼만 본다.
 - confirm 수단은 자유(AskUserQuestion/평문). 본문에 내용이 있으면 매체와 무관하게 표시된다.
 - "머지하자" 류 자연어 진입도 raw git/gh 직접 처리 X — 본 흐름(Step 2 포함) 경유.
 
-**`--auto` 지정 시**: 2번(confirm)만 생략하고 Step 4로 직행. 1번은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. Step 1의 머지 가능 사전 점검과 미커밋 파일 점검은 `--auto`에서도 멈춘다 — 사용자 확인이 아니라 머지 안전성과 파일 유실 문제라 옵션으로 우회하지 않는다.
+**`--auto` 지정 시**: 2번(confirm)만 생략하고 Step 4로 직행. 1번은 그대로 수행해 무엇을 머지했는지 기록으로 남긴다. `--auto`에서도 Step 1의 머지 가능 사전 점검에 걸리거나 미커밋 파일이 나오면 멈춘다 — 사용자 확인이 아니라 머지 안전성과 파일 유실 문제라 옵션으로 우회하지 않는다.
 
 ### Step 4. squash merge 실행
 
@@ -117,18 +115,26 @@ EOF
 ### Step 5. 머지 뒤 정리
 
 ```bash
-HEAD_BRANCH=<headRefName>; BASE=<baseRefName>
-git ls-remote --exit-code --heads origin "$HEAD_BRANCH" >/dev/null && git push origin --delete "$HEAD_BRANCH"
-if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
+HEAD_BRANCH='<headRefName>'; HEAD_OID='<headRefOid>'; BASE='<baseRefName>'
+[ "$(gh pr view <NUM> --json state -q .state)" = MERGED ] || { echo "PR이 머지되지 않아 정리하지 않습니다"; exit 1; }
+git ls-remote --exit-code origin "refs/heads/$HEAD_BRANCH" >/dev/null \
+  && git push --force-with-lease="$HEAD_BRANCH:$HEAD_OID" origin --delete "$HEAD_BRANCH"
+git fetch --prune origin
+if [ "$(git rev-parse --path-format=absolute --git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ]; then
   current=$(git branch --show-current)
-  [ "$current" = "$HEAD_BRANCH" ] && git switch "$BASE" && current=$BASE
-  git branch -D "$HEAD_BRANCH"
+  if [ "$(git rev-parse -q --verify "refs/heads/$HEAD_BRANCH")" = "$HEAD_OID" ]; then
+    [ "$current" = "$HEAD_BRANCH" ] && git switch "$BASE" && current=$BASE
+    git branch -D "$HEAD_BRANCH"
+  else
+    echo "로컬 브랜치 '$HEAD_BRANCH'가 없거나 PR head와 달라 지우지 않습니다"
+  fi
   if [ "$current" = "$BASE" ]; then git pull --ff-only origin "$BASE"; else git fetch origin "$BASE:$BASE"; fi
 fi
 ```
 
-- **워크트리는 지우지 않는다.** linked 워크트리에서는 원격 브랜치만 지운다. 폴더와 브랜치는 데스크톱 앱이나 세션 종료 프롬프트가 정리한다.
-- **실패하면 git 출력을 그대로 보고하고 강제로 진행하지 않는다.** 다른 워크트리가 쓰는 브랜치는 git이 삭제를 거부한다.
+- **워크트리는 지우지 않는다.** linked 워크트리에서는 원격 브랜치만 지운다. 워크트리 폴더와 로컬 브랜치는 데스크톱 앱이나 세션 종료 프롬프트가 정리한다.
+- **PR head와 커밋이 다른 브랜치는 지우지 않는다.** 머지 뒤 새 커밋이 추가된 브랜치, fork PR과 이름만 같은 origin 브랜치가 여기에 해당한다. 원격 브랜치는 `--force-with-lease`가 삭제를 거부하고(`stale info`), 그 출력을 보고한다.
+- **실패하면 git 출력을 그대로 보고하고 강제로 진행하지 않는다.** 다른 워크트리가 체크아웃한 브랜치는 git이 삭제를 거부한다.
 
 ## Execution
 
