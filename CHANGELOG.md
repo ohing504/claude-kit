@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/ohing504/claude-kit/compare/claude-kit--v0.10.0...claude-kit--v0.11.0) (2026-11-07)
+
+
+### Features
+
+* **squash-merge:** 머지 뒤 워크트리를 지우지 않고 메인 체크아웃에서만 로컬 브랜치 삭제와 base 동기화를 한다 ([#52](https://github.com/ohing504/claude-kit/issues/52)) ([893f7ed](https://github.com/ohing504/claude-kit/commit/893f7edd7eb93535bf316581fc3344954d1f15ef))
+
 ## [0.10.0](https://github.com/ohing504/claude-kit/compare/claude-kit--v0.9.0...claude-kit--v0.10.0) (2026-09-23)
 
 
