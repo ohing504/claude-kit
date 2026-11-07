@@ -2,7 +2,7 @@
 name: squash-merge
 description: PR을 squash merge하고 squash 메시지 정리(net diff만, PR 내부 단계 차단), 원격 브랜치 삭제까지 한 흐름. 메인 체크아웃에서 실행하면 로컬 브랜치 삭제와 base 동기화도 하고, 워크트리는 지우지 않는다. "스쿼시 머지", "머지하자" 발화에 — merge 실행 전 확인(`--auto` 인자로만 생략).
 argument-hint: "[--auto] [<pr#>|<branch>|<url>]"
-allowed-tools: Read, Bash(gh:*), Bash(git:*), Bash(${CLAUDE_SKILL_DIR}/scripts/post_merge.sh *)
+allowed-tools: Bash(gh:*), Bash(git:*)
 ---
 
 # Squash Merge
@@ -25,10 +25,10 @@ allowed-tools: Read, Bash(gh:*), Bash(git:*), Bash(${CLAUDE_SKILL_DIR}/scripts/p
 
 PR 정보 + 변경 사항:
 
-- `gh pr view <NUM> --json number,headRefName,headRefOid,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
+- `gh pr view <NUM> --json number,headRefName,baseRefName,title,body,commits,files,state,mergeable,mergeStateStatus,author`
 - `gh pr diff <NUM>` (full net diff)
 
-`headRefName`, `headRefOid`, `baseRefName`은 Step 5에 넘기므로 기억해 둔다.
+`headRefName`, `baseRefName`은 Step 5에서 쓰므로 기억해 둔다.
 
 PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진행.
 
@@ -40,9 +40,53 @@ PR이 이미 머지/닫힘 상태면 squash 단계 skip하고 Step 5부터 진�
 
 **미커밋 파일 점검**: linked 워크트리에서 실행 중이면(`git rev-parse --git-dir`와 `--git-common-dir`가 다르면) `git status --short`를 확인한다. 데스크톱 앱은 세션에서 Claude가 연 PR이 머지된 뒤 untracked 파일을 묻지 않고 지울 수 있다. 결과는 Step 3에서 쓴다. 메인 체크아웃의 미커밋 변경은 다른 세션의 것일 수 있어 점검 대상이 아니다.
 
-### Step 2. squash 메시지 작성
+### Step 2. squash 메시지 작성 — net diff 사실 기반
 
-`references/squash-message.md`를 Read해 규격대로 subject와 body를 쓴다. PR base 대비 head의 net diff만 사실로 쓴다.
+**기준**: PR base 대비 head의 **net diff**만 보고 작성 — 중간 commit history 인용 X.
+
+**차단 (session-context bleed)**:
+
+- PR 내 자체 발견 버그와 그 수정 commit
+- 되돌린 작업 (revert, restore)
+- 중간 refactor, rename 후 재변경 흔적
+- 개별 commit message 인용 (이슈 참조 줄은 예외, 아래 수집 규칙)
+- 세션 발화, 블로커, 디버깅 과정, 키 디시전 번호(D-NN) 인용
+
+**형식**:
+
+- subject: `type(scope): summary` — recent commits + CLAUDE.md 컨벤션 일치
+- body: 5줄 이내 bullet — net 변경만, HEREDOC
+- 이슈 참조 줄은 body 맨 끝에 별도 블록으로, bullet 5줄 제한에 포함하지 않는다
+
+**봇 의존성 PR은 body를 비운다 (net diff 기반 작성의 예외)**
+
+**조건 둘을 모두 만족할 때만**:
+
+1. PR `author.is_bot`이 `true`
+2. net diff가 의존성 버전 선언 파일의 버전 문자열 변경뿐 (`pubspec.yaml`/`.lock`, `package.json`/lockfile, `.github/workflows/*.yml`의 `uses:` 핀, `build.gradle*`, `Gemfile`/`.lock`, `go.mod`/`go.sum`, `requirements*.txt`, `Cargo.toml`/`.lock`)
+
+이 두 조건을 만족하면:
+
+- **subject**: PR 제목 그대로. **body**: 빈 문자열 (Step 4에서 `--body ""`).
+- **이슈 참조 수집을 통째로 건너뛰고**, "매칭 안 된 `#N`" 보고도 하지 않는다.
+- **`Signed-off-by: dependabot[bot]` 트레일러도 넣지 않는다.**
+
+**이슈 참조 수집 — commit history 차단의 유일한 예외**
+
+출처는 셋: PR body, PR 제목, 각 commit의 `messageHeadline`+`messageBody`(Step 1의 `commits`). `(close[sd]?|fix(es|ed)?|resolve[sd]?) #N`과 `Refs #N`을 **대소문자 무시**로 모두 걷는다.
+
+- **이슈 번호마다 키워드를 반복해 한 줄씩.** `Closes #1, #2`는 GitHub가 #1만 닫는다. 타 저장소는 `Closes owner/repo#100`.
+- **중복 제거**: 여러 출처가 같은 이슈를 언급하면 한 줄로 합친다. 같은 이슈에 닫기 키워드와 `Refs`가 섞여 있으면 닫기 키워드만 남긴다.
+- **키워드 승격 금지**: `Refs #N`만 있던 이슈를 `Closes`로 바꾸지 않는다. 닫을지는 그 이슈의 완료 조건이 정한다.
+- **net diff에서 사라진 작업의 참조는 뺀다**: 중간 commit이 `Closes #7`을 달았어도 그 변경이 PR 안에서 되돌려졌으면 넣지 않는다.
+- **매칭 안 된 `#N` 언급을 보고한다.** 세 출처에서 `#\d+`를 걷어, 참조 줄이 되지 못한 번호가 남으면 Step 3 출력에 한 줄 남긴다.
+  - 출력 문구: `#N 언급이 <걸린 출처>에 있으나 닫기 키워드 없음 — 이슈면 말미 Closes #N 규격(commit 스킬) 위반, PR 번호 언급이면 무시`
+  - `<걸린 출처>`는 그 번호가 실제로 나온 곳(PR 본문 / PR 제목 / commit message). PR 본문으로 고정해 적지 않는다.
+  - 수집에서 빼는 둘: 코드블록, 인용 블록 안의 번호, 바로 위 규칙으로 뺀 번호.
+  - `--auto`에서도 출력한다.
+  - 자동으로 `Closes`를 붙이지 않는다. 붙일지는 사용자가 정하고, 붙인다면 영문 `Closes #N`.
+
+배치는 bullet과 빈 줄 하나로 띄운 마지막 블록.
 
 ### Step 3. 실행 전 확인 게이트 (자동 발화, 명시 호출 공통)
 
@@ -67,26 +111,25 @@ EOF
 ```
 
 - GitHub 기본(개별 commit 이어붙이기) X — `--subject` + `--body` 명시 의무.
-- **봇 의존성 PR(메시지 규격의 예외)은 `--body ""`.** HEREDOC 없이 빈 문자열을 그대로 넘긴다 — `--body`를 생략하면 저장소의 `squash_merge_commit_message` 설정(대개 `PR_BODY`)이 되살아나 릴리즈 노트 전문이 커밋에 들어간다.
+- **봇 의존성 PR(Step 2 예외)은 `--body ""`.** HEREDOC 없이 빈 문자열을 그대로 넘긴다 — `--body`를 생략하면 저장소의 `squash_merge_commit_message` 설정(대개 `PR_BODY`)이 되살아나 릴리즈 노트 전문이 커밋에 들어간다.
 - **`--delete-branch`(`-d`) 사용 금지.** 이 옵션은 원격만이 아니라 로컬까지 정리하는데, 그 과정에서 gh가 현재 워크트리에서 base를 checkout하고 `git pull`을 실행한다. 다른 세션의 미커밋 변경이 워크트리에 있으면 그 pull이 실패하고(사용자 `pull.rebase=true`면 rebase 거부 메시지), 체크아웃된 브랜치만 바뀐 채 남는다. 원격 브랜치 삭제와 로컬 정리는 Step 5가 한다.
 
 ### Step 5. 머지 뒤 정리
 
 ```bash
-${CLAUDE_SKILL_DIR}/scripts/post_merge.sh <headRefName> <baseRefName> <headRefOid>
+HEAD_BRANCH=<headRefName>; BASE=<baseRefName>
+git ls-remote --exit-code --heads origin "$HEAD_BRANCH" >/dev/null && git push origin --delete "$HEAD_BRANCH"
+if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
+  current=$(git branch --show-current)
+  [ "$current" = "$HEAD_BRANCH" ] && git switch "$BASE" && current=$BASE
+  git branch -D "$HEAD_BRANCH"
+  if [ "$current" = "$BASE" ]; then git pull --ff-only origin "$BASE"; else git fetch origin "$BASE:$BASE"; fi
+fi
 ```
 
-원격 브랜치는 실행 위치와 무관하게 남아 있으면 지운다. 그 뒤 동작은 실행 위치로 정해진다.
-
-| 실행 위치 | 동작 |
-|---|---|
-| 메인 체크아웃 | 머지한 브랜치를 지우고 base를 동기화한다. 미커밋 변경, PR에 없는 커밋, 다른 워크트리가 쓰는 브랜치는 건드리지 않고 사유를 출력한다. |
-| 데스크톱 앱 워크트리 | 폴더와 브랜치를 앱에 맡긴다. |
-| 그 밖의 linked 워크트리 | 폴더와 브랜치를 세션 종료 프롬프트에 맡긴다. |
-
-- **이 스킬은 워크트리를 지우지 않는다.** 다른 세션이 쓰는 중일 수 있어 위 세 경우 모두 폴더를 남긴다.
-- **방금 머지한 브랜치만 다룬다.** 전역 `[gone]` 스윕을 하지 않는다. 쌓인 워크트리와 브랜치 정리는 이 스킬의 범위가 아니다.
+- **워크트리는 지우지 않는다.** linked 워크트리에서는 원격 브랜치만 지운다. 폴더와 브랜치는 데스크톱 앱이나 세션 종료 프롬프트가 정리한다.
+- **실패하면 git 출력을 그대로 보고하고 강제로 진행하지 않는다.** 다른 워크트리가 쓰는 브랜치는 git이 삭제를 거부한다.
 
 ## Execution
 
-Step 1-2는 분석 단계. **Step 3 확인 후** Step 4→5를 순차 실행. 마지막에 merge PR URL과 스크립트 출력을 그대로 보고한다.
+Step 1-2는 분석 단계. **Step 3 확인 후** Step 4→5를 순차 실행. git, gh 외 도구는 쓰지 않는다. 마지막에 merge PR URL과 정리 결과를 보고한다.
