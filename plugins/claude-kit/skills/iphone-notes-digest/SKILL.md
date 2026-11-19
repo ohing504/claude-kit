@@ -122,7 +122,7 @@ ${CLAUDE_SKILL_DIR}/scripts/collect.sh "레시피" "여행"
 
 ## 스크립트
 
-본문은 AppleScript로, 스캔과 첨부는 NoteStore.sqlite 읽기전용으로 읽는다. 이 경로를 고른 근거와 기존 도구 비교는 [references/landscape.md](references/landscape.md).
+본문은 AppleScript로, 스캔과 첨부는 NoteStore.sqlite를 읽기전용으로 열어 읽는다. 이 추출 방식을 바꾸기 전에 [references/extraction-methods.md](references/extraction-methods.md)를 읽는다.
 
 실행할 때는 `${CLAUDE_SKILL_DIR}/scripts/<이름>`로 부른다 — 현재 디렉토리와 무관하게 찾히고, 이 형태여야 프론트매터의 사전 승인 규칙에 걸려 권한 프롬프트가 뜨지 않는다. `dispose_notes.sh`는 메모를 지우므로 승인 규칙에서 일부러 빼뒀다 — 실행마다 권한 프롬프트가 뜨는 것이 정상이다.
 

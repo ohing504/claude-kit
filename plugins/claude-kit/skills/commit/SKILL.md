@@ -42,7 +42,7 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 
 **staging 범위**: 이번 작업에서 변경한 파일만 경로로 명시해 add. `git add -A`와 디렉토리째 add는 의도가 명확할 때만. 프로젝트 CLAUDE.md에 staging 규약이 있으면 그것을 따른다.
 
-**커밋은 기능 단위로 묶는다.** 작업 단계마다 쪼개지 않는다.
+**한 커밋에는 한 목적의 변경을 담는다.** 같은 목적의 구현, 테스트, 수정을 단계마다 따로 커밋하지 않는다.
 
 `--no-verify` 금지. pre-commit hook이 실패하면 보고하고, hook이 지적한 것을 고친 뒤 재커밋한다.
 
@@ -64,8 +64,7 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 Closes #12
 ```
 
-- **이슈를 닫으려면 말미에 `Closes #N`을 따로 적는다.** squash merge가 커밋 제목에 붙이는 `(#123)`은 PR 번호라 이슈를 닫지 않는다. 다른 저장소의 이슈는 `Closes owner/repo#N`으로 쓴다.
-- **PR 하나는 이슈 하나 범위로 둔다.** 거절된 agentic PR은 머지된 것보다 줄을 17%, 파일을 10% 더 건드렸다.
+`Closes`는 이슈마다 한 줄씩 쓴다. `Closes #1, #2`는 GitHub가 #1만 닫는다. 다른 저장소의 이슈는 `Closes owner/repo#N`으로 쓴다.
 
 테스트와 lint 결과는 적지 않는다. CI가 PR 페이지에 붙이고, 본문에 손으로 적은 것은 아무도 대조하지 않는다.
 
