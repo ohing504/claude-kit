@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/ohing504/claude-kit/compare/claude-kit--v0.11.0...claude-kit--v0.12.0) (2026-11-19)
+
+
+### Features
+
+* **git-issue, commit, iphone-notes-digest:** 이슈 분할, 라벨, Closes, 메모 추출 방식 규칙과 근거를 추가 ([9ec43df](https://github.com/ohing504/claude-kit/commit/9ec43dfaf67775cd025515207fb1da6e96f067d3))
+
 ## [0.11.0](https://github.com/ohing504/claude-kit/compare/claude-kit--v0.10.0...claude-kit--v0.11.0) (2026-11-07)
 
 
