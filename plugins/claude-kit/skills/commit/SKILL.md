@@ -7,6 +7,7 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 # Commit
 
 ## Context
+
 - 현재 상태: !`git status`
 - 변경 사항: !`git diff HEAD`
 - 신규 파일(untracked): !`git ls-files --others --exclude-standard`
@@ -25,6 +26,7 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 **넣지 않는다**: 세션 대화(사용자 발화, 결정 과정, 블로커), 작업 중 발견한 버그와 디버깅 시도, 되돌린 작업.
 
 **제목은 그 줄만 읽어도 이해되게** (self-contained). 이슈 번호나 문서명이나 내부 코드네임을 *내용 대신* 쓰지 않는다 — 찾아봐야 알면 `git log` 훑기가 무의미해진다.
+
 - ❌ `docs: 이슈 관리를 최상위 #38 기준으로 정합` / ✅ `docs: 리팩토링 이슈를 목적 기준 계층으로 재편` (참조는 본문이나 말미 `Closes #38`로)
 - **`wip:` 금지** — 미완 상태를 커밋에 적으면 그게 stale 사본이 된다.
 - **비유와 은유 금지.** 무슨 동작인지 그대로 쓴다 — 삭제, 추가, 이동, 교체. 읽는 쪽이 무엇을 한 변경인지 유추해야 하면 `git log`로 찾을 수 없다.
@@ -39,6 +41,8 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 ## commit
 
 **staging 범위**: 이번 작업에서 변경한 파일만 경로로 명시해 add. `git add -A`와 디렉토리째 add는 의도가 명확할 때만. 프로젝트 CLAUDE.md에 staging 규약이 있으면 그것을 따른다.
+
+**커밋은 기능 단위로 묶는다.** 작업 단계마다 쪼개지 않는다.
 
 `--no-verify` 금지. pre-commit hook이 실패하면 보고하고, hook이 지적한 것을 고친 뒤 재커밋한다.
 
@@ -59,6 +63,9 @@ allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr
 
 Closes #12
 ```
+
+- **이슈를 닫으려면 말미에 `Closes #N`을 따로 적는다.** squash merge가 커밋 제목에 붙이는 `(#123)`은 PR 번호라 이슈를 닫지 않는다. 다른 저장소의 이슈는 `Closes owner/repo#N`으로 쓴다.
+- **PR 하나는 이슈 하나 범위로 둔다.** 거절된 agentic PR은 머지된 것보다 줄을 17%, 파일을 10% 더 건드렸다.
 
 테스트와 lint 결과는 적지 않는다. CI가 PR 페이지에 붙이고, 본문에 손으로 적은 것은 아무도 대조하지 않는다.
 
